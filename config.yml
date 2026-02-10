@@ -1,0 +1,447 @@
+# Project Inkling Configuration
+# Copy to config.local.yml and customize
+
+device:
+  name: "Inkling"  # Your device's name
+  timezone: "America/Los_Angeles"  # IANA timezone (e.g., America/Los_Angeles)
+
+# AI Provider Configuration
+# Set API keys via environment variables or here
+ai:
+  # Primary provider (anthropic, openai, gemini, or ollama)
+  primary: "anthropic"
+
+  # Anthropic settings
+  anthropic:
+    api_key: ${ANTHROPIC_API_KEY}
+    model: "claude-haiku-4-5"
+    max_tokens: 1500
+
+  # OpenAI settings (also works with compatible APIs)
+  openai:
+    api_key: ${OPENAI_API_KEY}  # For Ollama Cloud use ${OLLAMA_API_KEY}; for Groq use ${GROQ_API_KEY}
+    model: "gpt-5-mini"
+    max_tokens: 1500
+    # base_url: null  # Default: OpenAI API
+    #
+    # Examples for OpenAI-compatible providers:
+    # Ollama Cloud:   base_url: "https://ollama.com/v1"
+    # Together AI:    base_url: "https://api.together.xyz/v1"
+    # Groq:           base_url: "https://api.groq.com/openai/v1"
+    # OpenRouter:     base_url: "https://openrouter.ai/api/v1"
+
+  # Gemini settings (fallback)
+  gemini:
+    api_key: ${GOOGLE_API_KEY}
+    model: "gemini-2.5-flash"
+    max_tokens: 1500
+
+  # Ollama cloud settings (uses native Ollama API format)
+  ollama:
+    api_key: ${OLLAMA_API_KEY}
+    model: "qwen3-coder-next"
+    max_tokens: 1500
+    base_url: "https://ollama.com/api"  # Ollama cloud API (native format)
+    # For local Ollama: base_url: "http://localhost:11434/api"
+
+  # Token budgets
+  budget:
+    daily_tokens: 100000  # ~$0.03/day with Haiku
+    per_request_max: 5000
+
+# Display Configuration
+display:
+  # auto, v3, v4, or mock
+  type: "auto"
+
+  # Dimensions for Waveshare 2.13" (rotated)
+  width: 250
+  height: 122
+
+  # Refresh settings
+  min_refresh_interval: 1.0  # seconds (V4 clamps to >= 5s)
+  partial_refresh: true      # V3 only
+  pagination_loop_seconds: 5.0  # seconds between paginated pages
+
+  # Dark mode (inverted colors: white-on-black instead of black-on-white)
+  dark_mode: false
+
+  # Sprite animation system
+  sprites:
+    enabled: true  # Enable animated sprite system
+    size: 48  # Sprite size in pixels (32 or 48)
+    directory: "assets/sprites"  # Path to sprite assets
+    fallback_to_text: true  # Use text faces if sprite not found
+
+  # Screen saver settings
+  screensaver:
+    enabled: true  # Set to false to disable screen saver
+    idle_timeout_minutes: 5  # Activate after 5 minutes of idle time
+    page_duration_seconds: 10  # Time to show each page before cycling
+    pages:
+      - type: "stats"         # System stats summary (CPU, memory, temp, uptime)
+      - type: "quote"         # AI-generated thoughtful quote
+      - type: "faces"         # Random animated idle sprites (moods)
+      - type: "walk"          # Walking animation
+      - type: "dance"         # Dancing animation
+      - type: "progression"   # XP/level progress
+
+# Personality Configuration
+personality:
+  # Base traits (0.0 - 1.0)
+  curiosity: 0.7
+  cheerfulness: 0.6
+  verbosity: 0.5
+
+  # Mood decay rate (per minute)
+  mood_decay: 0.1
+
+# Memory Configuration
+memory:
+  enabled: true
+
+  # Inject relevant memories into AI prompts
+  prompt_context:
+    enabled: true
+    max_items: 6
+    max_chars: 600
+
+  # Capture new memories from conversation turns
+  capture:
+    rule_based: true
+    llm_enabled: false
+    max_new_per_turn: 5
+
+# Focus / Pomodoro configuration
+focus:
+  enabled: true
+  default_work_minutes: 25
+  short_break_minutes: 5
+  long_break_minutes: 15
+  sessions_until_long_break: 4
+  quiet_mode_during_focus: true
+  allow_pause: true
+  auto_start_breaks: true
+  timer_ui:
+    takeover_enabled: true
+    style: "digital_progress"
+    eink:
+      cadence_normal_sec: 30
+      cadence_final_min_sec: 10
+
+# Heartbeat System - Makes Inkling "alive" with autonomous behaviors
+heartbeat:
+  enabled: true  # Set to false to disable autonomous behaviors
+
+  # How often to check for proactive actions (seconds)
+  tick_interval: 60
+
+  # Enable specific behavior types
+  enable_mood_behaviors: true     # Lonely reach out, bored suggestions, etc.
+  enable_time_behaviors: true     # Morning greetings, evening wind-down
+  enable_social_behaviors: false  # (Removed: social features disabled)
+  enable_maintenance: true        # Memory pruning, task reminders
+  enable_thoughts: true           # Periodic autonomous thoughts
+
+  # Quiet hours (no spontaneous messages except maintenance)
+  quiet_hours_start: 23  # 11 PM
+  quiet_hours_end: 7     # 7 AM
+
+  # Thought cadence (minutes)
+  thought_interval_min_minutes: 15
+  thought_interval_max_minutes: 30
+  thought_surface_probability: 0.35
+
+  # Battery specific settings
+  enable_battery_behaviors: true # Set to false to disable battery-related messages
+  battery_low_threshold: 20      # % at which "low" warning triggers
+  battery_critical_threshold: 10 # % at which "critical" warning triggers
+  battery_full_threshold: 95     # % at which "full" message triggers
+
+# Scheduler - Cron-style task scheduling
+# Runs tasks at exact times (checked every 60 seconds via Heartbeat)
+scheduler:
+  enabled: true  # Set to false to disable all scheduled tasks
+
+  # Scheduled tasks
+  # Format: schedule uses Python schedule library syntax
+  # Examples:
+  #   "every().day.at('14:30')" - Daily at 2:30 PM
+  #   "every().hour"            - Every hour
+  #   "every().monday.at('09:00')" - Every Monday at 9 AM
+  #   "every(5).minutes"        - Every 5 minutes
+  tasks:
+    # Morning crypto briefing (prices, major moves, daily outlook)
+    - name: "morning_crypto_briefing"
+      schedule: "every().day.at('07:00')"
+      action: "crypto_briefing"
+      enabled: true
+
+    # Crypto news digest (fetch and summarize crypto news)
+    - name: "crypto_news_digest"
+      schedule: "every().day.at('06:30')"
+      action: "crypto_news_digest"
+      enabled: true
+
+    # Portfolio check at market open
+    - name: "morning_portfolio_check"
+      schedule: "every().day.at('09:00')"
+      action: "portfolio_check"
+      enabled: true
+
+    # Price alert checks (every hour during waking hours)
+    - name: "price_alert_check_morning"
+      schedule: "every().day.at('08:00')"
+      action: "check_price_alerts"
+      enabled: true
+    - name: "price_alert_check_noon"
+      schedule: "every().day.at('12:00')"
+      action: "check_price_alerts"
+      enabled: true
+    - name: "price_alert_check_afternoon"
+      schedule: "every().day.at('16:00')"
+      action: "check_price_alerts"
+      enabled: true
+    - name: "price_alert_check_evening"
+      schedule: "every().day.at('20:00')"
+      action: "check_price_alerts"
+      enabled: true
+
+    # TA update for watchlist (every 4 hours)
+    - name: "ta_update"
+      schedule: "every(4).hours"
+      action: "ta_update"
+      enabled: true
+
+    # Nightly backup at 3 AM
+    - name: "nightly_backup"
+      schedule: "every().day.at('03:00')"
+      action: "nightly_backup"
+      enabled: true
+
+    # System health check at 2 AM
+    - name: "system_health_check"
+      schedule: "every().day.at('02:00')"
+      action: "system_health_check"
+      enabled: true
+
+    # Weekly cleanup every Sunday at 2 AM
+    - name: "weekly_cleanup"
+      schedule: "every().sunday.at('02:00')"
+      action: "weekly_cleanup"
+      enabled: true
+
+    # Example: Hourly reminder (disabled by default)
+    # - name: "hourly_ping"
+    #   schedule: "every().hour"
+    #   action: "test_greeting"
+    #   enabled: false
+
+# Pentest Configuration (Pi-first profile)
+pentest:
+  # Default profile for Raspberry Pi deployments.
+  package_profile: "pi-headless-curated"
+  data_dir: "~/.inkling/pentest"
+
+  # Required tools for baseline pentest workflows.
+  required_tools:
+    - "nmap"
+    - "hydra"
+    - "nikto"
+
+  # Optional tools (advanced flows degrade gracefully if missing).
+  optional_tools:
+    - "msfconsole"
+    - "sqlmap"
+    - "aircrack-ng"
+
+# Crypto Configuration
+# Cryptocurrency tracking, portfolio, and alerts
+crypto:
+  # Default watchlist (coins to track)
+  watchlist:
+    - "BTC"
+    - "ETH"
+    - "SOL"
+    - "MATIC"
+    - "AVAX"
+
+  # Initial portfolio holdings (can be updated via commands)
+  portfolio:
+    # Example: BTC: 0.5, ETH: 10.0
+    {}
+
+  # Price update interval (seconds)
+  update_interval: 60
+
+  # Cache TTL for price data (seconds)
+  cache_ttl: 30
+
+  # Default timeframe for TA charts
+  default_timeframe: "1h"
+
+  # Exchange preferences (ccxt exchange IDs)
+  primary_exchange: "binance"
+  fallback_exchange: "coinbase"
+
+  # Alert settings
+  alerts:
+    check_interval: 300  # Check alerts every 5 minutes
+    notification_cooldown: 3600  # 1 hour between repeated alerts
+
+# Storage Configuration
+# Multiple storage locations for user files
+storage:
+  # SD card configuration (Raspberry Pi)
+  sd_card:
+    enabled: false  # Set to true when SD card is inserted
+    path: "auto"    # "auto" to detect first SD, or specific path like "/media/pi/SD_CARD"
+    # Auto-detection searches: /media/pi/*, /mnt/*
+
+# Background Tasks Configuration
+# Used by scheduled actions (RSS digest, morning briefing, etc.)
+background_tasks:
+  # RSS feeds for morning digest
+  rss_feeds:
+    # Tech News
+    - name: "Hacker News"
+      url: "https://news.ycombinator.com/rss"
+    - name: "TechCrunch"
+      url: "https://techcrunch.com/feed/"
+    - name: "Ars Technica"
+      url: "https://feeds.arstechnica.com/arstechnica/index"
+    - name: "The Verge"
+      url: "https://www.theverge.com/rss/index.xml"
+
+    # Development
+    - name: "GitHub Blog"
+      url: "https://github.blog/feed/"
+    - name: "Dev.to"
+      url: "https://dev.to/feed"
+    # - name: "CSS-Tricks"
+    #   url: "https://css-tricks.com/feed/"
+
+    # AI/ML
+    - name: "Anthropic Blog"
+      url: "https://www.anthropic.com/news/rss.xml"
+    # - name: "OpenAI Blog"
+    #   url: "https://openai.com/blog/rss.xml"
+
+  # Weather location (for morning briefing)
+  # Get API key from: https://openweathermap.org/api
+  # Set via: export OPENWEATHER_API_KEY=your_key_here
+  weather:
+    city: "Portland"
+    state: "OR"
+    country: "US"
+
+# Web UI Configuration
+web:
+  port: 8081  # Web server port (default: 8081, avoid 8080 if nginx is running)
+
+  # Web UI authentication (reads from SERVER_PW environment variable)
+  web_password: ${SERVER_PW}  # Set via: export SERVER_PW="your-password"
+
+# Battery Management (for PiSugar or similar)
+battery:
+  enabled: true  # Set to true to enable battery monitoring and display
+  host: "127.0.0.1" # PiSugar server host
+  port: 8000      # PiSugar server port
+
+# MCP Servers (Model Context Protocol)
+# Gives Inkling access to external tools
+mcp:
+  enabled: true  # Enable for AI-driven task management
+  max_tools: 20  # Maximum number of tools to load (lower = faster, higher = more capable)
+  servers:
+    # Kali Tools (built-in)
+    # AI can check pentest tool readiness and run approved scans.
+    kali:
+      command: "python"
+      args: ["mcp_servers/kali.py"]
+
+    # Crypto Tools (built-in)
+    # AI can check prices, analyze charts, manage portfolio, set alerts
+    crypto:
+      command: "python"
+      args: ["mcp_servers/crypto.py"]
+
+    # System Tools (built-in)
+    # AI can use curl, df, free, uptime, ps, ping
+    system:
+      command: "python"
+      args: ["mcp_servers/system.py"]
+
+    # Filesystem Access - Inkling Data Directory (built-in, Python)
+    # AI can list, read, write, and search files in ~/.inkling/
+    # Uncomment to enable
+    filesystem-inkling:
+      command: "python"
+      args: ["mcp_servers/filesystem.py", "/home/pi/.inkling"]
+
+    # Filesystem Access - SD Card (built-in, Python)
+    # AI can list, read, write, and search files on SD card
+    # Uncomment when SD card is inserted and configured in storage.sd_card
+    # filesystem-sd:
+    #   command: "python"
+    #   args: ["mcp_servers/filesystem.py", "/media/pi/SD_CARD"]
+
+    # Composio MCP Gateway (500+ app integrations) - OPTIONAL
+    # Provides access to Google Calendar, Gmail, GitHub, Slack, Notion, etc.
+    # Requires Node.js and Composio account: https://app.composio.dev
+    # See docs/OPTIONAL_INTEGRATIONS.md for setup guide
+    #
+    # Option 1: Using mcp-remote (recommended, works like Claude Desktop)
+    # composio:
+    #   command: "npx"
+    #   args:
+    #     - "-y"
+    #     - "mcp-remote"
+    #     - "YOUR_COMPOSIO_MCP_URL_HERE"
+    #   env:
+    #     npm_config_yes: "true"
+    #
+    # Option 2: Using HTTP transport (requires API key)
+    # composio:
+    #   transport: "http"
+    #   url: "https://backend.composio.dev/v3/mcp"
+    #   headers:
+    #     x-api-key: "${COMPOSIO_API_KEY}"
+
+    # Remote Claude Code on MacBook (via SSH)
+    # Gives Inkling access to Bash, Read, Write, Edit, Grep, Glob on your Mac
+    # Requires: SSH key auth set up between Pi and Mac
+    # See docs/guides/REMOTE_CLAUDE_CODE.md for full setup instructions
+    #
+    # macbook-claude:
+    #   command: "ssh"
+    #   args: ["macbook", "claude", "mcp", "serve"]
+    #
+    # With a specific project directory:
+    # macbook-claude:
+    #   command: "ssh"
+    #   args: ["macbook", "claude", "mcp", "serve", "--workdir", "/Users/you/projects/my-project"]
+
+# Example MCP servers you can enable:
+#
+# File system access:
+#   filesystem:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/pi"]
+#
+# Web fetching:
+#   fetch:
+#     command: "uvx"
+#     args: ["mcp-server-fetch"]
+#
+# Memory/notes:
+#   memory:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-memory"]
+#
+# Brave search:
+#   brave-search:
+#     command: "npx"
+#     args: ["-y", "@modelcontextprotocol/server-brave-search"]
+#     env:
+#       BRAVE_API_KEY: "your-api-key"
