@@ -328,6 +328,41 @@
             overflow-y: auto;
             padding: 1rem;
         }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 0.6rem;
+            padding: 0.75rem 1rem 0.25rem;
+        }
+        .dashboard-card {
+            border: 1px solid var(--border);
+            padding: 0.55rem 0.65rem;
+            background: color-mix(in srgb, var(--bg) 94%, var(--text) 6%);
+            min-height: 78px;
+        }
+        .dashboard-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--muted);
+            margin-bottom: 0.2rem;
+        }
+        .dashboard-value {
+            font-size: 1rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .dashboard-sub {
+            font-size: 0.72rem;
+            color: var(--muted);
+            margin-top: 0.2rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dashboard-ok { color: #1f8f54; }
+        .dashboard-warn { color: #b86a14; }
+        .dashboard-bad { color: #b11f3a; }
         .focus-takeover {
             display: none;
             flex: 1;
@@ -540,6 +575,9 @@
             background: var(--text);
             color: var(--bg);
         }
+        .command-buttons button.prefill {
+            border-style: dashed;
+        }
 
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
@@ -581,6 +619,14 @@
             }
             .messages {
                 padding: 0.75rem;
+            }
+            .dashboard {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.45rem;
+                padding: 0.6rem 0.75rem 0.2rem;
+            }
+            .dashboard-card {
+                min-height: 68px;
             }
             .message {
                 padding: 0.6rem;
@@ -654,6 +700,10 @@
             .command-palette {
                 margin: 0.5rem;
             }
+            .dashboard {
+                grid-template-columns: 1fr;
+                padding: 0.6rem 0.5rem 0.2rem;
+            }
         }
     </style>
 </head>
@@ -681,6 +731,58 @@
         <button onclick="clearSearch()">✕</button>
     </div>
 
+    <div class="dashboard" id="dashboard">
+        <div class="dashboard-card">
+            <div class="dashboard-label">System</div>
+            <div class="dashboard-value" id="dash-system">
+                CPU {{dashboard.get('system', {}).get('cpu', 0)}}% | MEM {{dashboard.get('system', {}).get('memory', 0)}}%
+            </div>
+            <div class="dashboard-sub" id="dash-temp">
+                Temp {{dashboard.get('system', {}).get('temperature', 0)}}°C | Uptime {{dashboard.get('system', {}).get('uptime', '--:--:--')}}
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-label">Network</div>
+            <div class="dashboard-value" id="dash-network">
+                % if dashboard.get('wifi', {}).get('connected'):
+                    Connected
+                % else:
+                    Offline
+                % end
+            </div>
+            <div class="dashboard-sub" id="dash-network-sub">
+                {{dashboard.get('wifi', {}).get('ssid', 'No SSID')}} | Signal {{dashboard.get('wifi', {}).get('signal', 0)}}%
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-label">Kali Readiness</div>
+            <div class="dashboard-value" id="dash-kali">
+                {{dashboard.get('tools', {}).get('installed_count', 0)}} installed
+            </div>
+            <div class="dashboard-sub" id="dash-kali-sub">
+                req missing {{dashboard.get('tools', {}).get('required_missing_count', 0)}},
+                opt missing {{dashboard.get('tools', {}).get('optional_missing_count', 0)}}
+            </div>
+        </div>
+        <div class="dashboard-card">
+            <div class="dashboard-label">Control Plane</div>
+            <div class="dashboard-value" id="dash-control">
+                {{dashboard.get('control', {}).get('command_count', 0)}} commands
+            </div>
+            <div class="dashboard-sub" id="dash-control-sub">
+                bash:
+                % if dashboard.get('control', {}).get('bash_enabled'):
+                    enabled
+                % else:
+                    disabled
+                % end
+                % if dashboard.get('focus', {}).get('active'):
+                    | focus {{dashboard.get('focus', {}).get('phase', 'active')}}
+                % end
+            </div>
+        </div>
+    </div>
+
     <div class="messages" id="messages"></div>
     <div class="focus-takeover" id="focus-takeover">
         <div class="focus-phase" id="focus-phase">FOCUS</div>
@@ -698,54 +800,31 @@
     <details class="command-palette" open>
         <summary>⚙️ Commands</summary>
         <div class="command-groups">
+            % for group in command_groups:
             <div class="command-group">
-                <h4>Info</h4>
+                <h4>{{group['name']}}</h4>
                 <div class="command-buttons">
-                    <button onclick="runCommand('/help')">Help</button>
-                    <button onclick="runCommand('/level')">Level</button>
-                    <button onclick="runCommand('/stats')">Stats</button>
-                    <button onclick="runCommand('/history')">History</button>
+                    % for cmd in group['commands']:
+                    % if cmd.get('needs_input'):
+                    <button
+                        class="prefill"
+                        onclick="prefillCommand('{{cmd['example']}}')"
+                        title="{{cmd['description']}}"
+                    >
+                        {{cmd['label']}}
+                    </button>
+                    % else:
+                    <button
+                        onclick="runCommand('{{cmd['command']}}')"
+                        title="{{cmd['description']}}"
+                    >
+                        {{cmd['label']}}
+                    </button>
+                    % end
+                    % end
                 </div>
             </div>
-
-            <div class="command-group">
-                <h4>Personality</h4>
-                <div class="command-buttons">
-                    <button onclick="runCommand('/mood')">Mood</button>
-                    <button onclick="runCommand('/energy')">Energy</button>
-                    <button onclick="runCommand('/traits')">Traits</button>
-                </div>
-            </div>
-
-            <div class="command-group">
-                <h4>Tasks</h4>
-                <div class="command-buttons">
-                    <button onclick="runCommand('/tasks')">List Tasks</button>
-                    <button onclick="runCommand('/taskstats')">Stats</button>
-                </div>
-            </div>
-
-            <div class="command-group">
-                <h4>System</h4>
-                <div class="command-buttons">
-                    <button onclick="runCommand('/system')">System</button>
-                    <button onclick="runCommand('/config')">Config</button>
-                    <button onclick="runCommand('/faces')">Faces</button>
-                    <button onclick="runCommand('/refresh')">Refresh</button>
-                    <button onclick="runCommand('/clear')">Clear</button>
-                </div>
-            </div>
-
-            <div class="command-group">
-                <h4>Focus</h4>
-                <div class="command-buttons">
-                    <button onclick="runCommand('/focus start')">Start</button>
-                    <button onclick="runCommand('/focus pause')">Pause</button>
-                    <button onclick="runCommand('/focus resume')">Resume</button>
-                    <button onclick="runCommand('/focus stop')">Stop</button>
-                    <button onclick="runCommand('/focus stats')">Stats</button>
-                </div>
-            </div>
+            % end
         </div>
     </details>
 
@@ -782,6 +861,14 @@
         const focusTimerEl = document.getElementById('focus-timer');
         const focusTaskEl = document.getElementById('focus-task');
         const focusProgressFillEl = document.getElementById('focus-progress-fill');
+        const dashSystemEl = document.getElementById('dash-system');
+        const dashTempEl = document.getElementById('dash-temp');
+        const dashNetworkEl = document.getElementById('dash-network');
+        const dashNetworkSubEl = document.getElementById('dash-network-sub');
+        const dashKaliEl = document.getElementById('dash-kali');
+        const dashKaliSubEl = document.getElementById('dash-kali-sub');
+        const dashControlEl = document.getElementById('dash-control');
+        const dashControlSubEl = document.getElementById('dash-control-sub');
 
         // Handle enter key
         inputEl.addEventListener('keypress', (e) => {
@@ -856,8 +943,9 @@
                 hideTypingIndicator();
 
                 if (data.error) {
-                    addMessage('assistant', 'Error: ' + data.error);
-                    showToast('Error: ' + data.error, 'error');
+                    const errorMsg = data.response || data.error || 'Unknown error';
+                    addMessage('assistant', 'Error: ' + errorMsg);
+                    showToast('Error: ' + errorMsg, 'error');
                 } else {
                     addMessage('assistant', data.response, data.meta);
                     updateState(data);
@@ -884,7 +972,8 @@
                 const data = await resp.json();
 
                 if (data.error) {
-                    addMessage('system', 'Error: ' + data.error);
+                    const errorMsg = data.response || data.error || 'Unknown error';
+                    addMessage('system', 'Error: ' + errorMsg);
                 } else {
                     addMessage('system', data.response);
                     updateState(data);
@@ -900,6 +989,13 @@
         function sendCommand(cmd) {
             inputEl.value = cmd;
             sendMessage();
+        }
+
+        function prefillCommand(cmd) {
+            inputEl.value = cmd;
+            inputEl.focus();
+            inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+            showToast('Command prefilled. Edit if needed, then Send.', 'info', 1800);
         }
 
         function addMessage(role, text, meta) {
@@ -949,6 +1045,50 @@
             if (data.status && statusEl) statusEl.textContent = data.status;
             if (data.thought !== undefined && thoughtEl) thoughtEl.textContent = data.thought || '';
             if (data.focus !== undefined) updateFocusTakeover(data.focus);
+        }
+
+        function updateDashboard(data) {
+            if (!data) return;
+            const sys = data.system || {};
+            const wifi = data.wifi || {};
+            const tools = data.tools || {};
+            const focus = data.focus || {};
+            const control = data.control || {};
+
+            if (dashSystemEl) {
+                dashSystemEl.textContent = `CPU ${sys.cpu || 0}% | MEM ${sys.memory || 0}%`;
+            }
+            if (dashTempEl) {
+                const temp = sys.temperature && sys.temperature > 0 ? `${sys.temperature}°C` : '--°C';
+                dashTempEl.textContent = `Temp ${temp} | Uptime ${sys.uptime || '--:--:--'}`;
+            }
+            if (dashNetworkEl) {
+                dashNetworkEl.textContent = wifi.connected ? 'Connected' : 'Offline';
+                dashNetworkEl.className = `dashboard-value ${wifi.connected ? 'dashboard-ok' : 'dashboard-bad'}`;
+            }
+            if (dashNetworkSubEl) {
+                const ssid = wifi.ssid || 'No SSID';
+                const signal = wifi.signal || 0;
+                const bt = wifi.btcfg_running ? ' | BLE cfg active' : '';
+                dashNetworkSubEl.textContent = `${ssid} | Signal ${signal}%${bt}`;
+            }
+            if (dashKaliEl) {
+                dashKaliEl.textContent = `${tools.installed_count || 0} installed`;
+                const reqMissing = tools.required_missing_count || 0;
+                const cls = reqMissing > 0 ? 'dashboard-bad' : ((tools.optional_missing_count || 0) > 0 ? 'dashboard-warn' : 'dashboard-ok');
+                dashKaliEl.className = `dashboard-value ${cls}`;
+            }
+            if (dashKaliSubEl) {
+                dashKaliSubEl.textContent = `req missing ${tools.required_missing_count || 0}, opt missing ${tools.optional_missing_count || 0}`;
+            }
+            if (dashControlEl) {
+                dashControlEl.textContent = `${control.command_count || 0} commands`;
+            }
+            if (dashControlSubEl) {
+                const bashState = control.bash_enabled ? 'enabled' : 'disabled';
+                const focusState = focus.active ? ` | focus ${focus.phase || 'active'}` : '';
+                dashControlSubEl.textContent = `bash: ${bashState}${focusState}`;
+            }
         }
 
         function formatTimer(sec) {
@@ -1014,6 +1154,11 @@
                 const resp = await fetch('/api/state');
                 const data = await resp.json();
                 updateState(data);
+
+                const dashboardResp = await fetch('/api/dashboard');
+                const dashboardData = await dashboardResp.json();
+                updateDashboard(dashboardData);
+
                 connDot.classList.remove('offline');
                 connDot.title = 'Connected';
                 if (wasOffline) {

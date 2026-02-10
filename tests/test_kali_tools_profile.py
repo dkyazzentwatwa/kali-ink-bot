@@ -32,6 +32,31 @@ def test_tools_status_pi_profile(mock_tools, temp_data_dir):
     assert "sudo apt install -y kali-linux-headless nmap hydra nikto" in status["install_guidance"]["pi_baseline"]
 
 
+def test_profiles_catalog_and_install_command(mock_tools, temp_data_dir):
+    manager = KaliToolManager(data_dir=temp_data_dir)
+    profiles = manager.get_profiles_catalog()
+    names = {p["name"] for p in profiles}
+
+    assert "web" in names
+    assert "vulnerability" in names
+    assert "passwords" in names
+    assert "information-gathering" in names
+
+    cmd = manager.get_profile_install_command(["web", "passwords"])
+    assert "kali-tools-web" in cmd
+    assert "kali-tools-passwords" in cmd
+
+
+def test_profile_status_for_selected_profiles(mock_tools, temp_data_dir):
+    manager = KaliToolManager(data_dir=temp_data_dir)
+    status = manager.get_profile_status(["web", "passwords"])
+
+    assert "web" in status["profiles"]
+    assert "passwords" in status["profiles"]
+    assert status["profiles"]["web"]["total_tools"] > 0
+    assert status["profiles"]["passwords"]["total_tools"] > 0
+
+
 @pytest.mark.asyncio
 async def test_exploit_graceful_when_optional_missing(mock_tools, temp_data_dir):
     manager = KaliToolManager(data_dir=temp_data_dir)

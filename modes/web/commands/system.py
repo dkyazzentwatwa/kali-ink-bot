@@ -51,10 +51,40 @@ class SystemCommands(CommandHandler):
         }
 
     def bash(self, args: str) -> Dict[str, Any]:
-        """Disable bash execution in web UI."""
+        """Run a shell command with configured safety limits."""
+        if not getattr(self.web_mode, "_allow_web_bash", False):
+            return {
+                "response": (
+                    "The /bash command is disabled for web mode.\n"
+                    "Set web.allow_bash: true in config to enable remote command execution."
+                ),
+                "error": True,
+            }
+        if not args:
+            return {
+                "response": "Usage: /bash <command>",
+                "error": True,
+            }
+
+        from core.shell_utils import run_bash_command
+
+        try:
+            exit_code, output = run_bash_command(
+                args,
+                timeout_seconds=getattr(self.web_mode, "_bash_timeout_seconds", 8),
+                max_output_bytes=getattr(self.web_mode, "_bash_max_output_bytes", 8192),
+            )
+        except Exception as exc:
+            return {"response": f"Command error: {exc}", "error": True}
+
+        if output:
+            response_text = f"{output.rstrip()}\n[exit {exit_code}]"
+        else:
+            response_text = f"[exit {exit_code}]"
         return {
-            "response": "The /bash command is disabled in the web UI.",
-            "error": True,
+            "response": response_text,
+            "face": self._get_face_str(),
+            "status": "bash",
         }
 
     def wifi(self) -> Dict[str, Any]:

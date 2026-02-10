@@ -2,7 +2,7 @@
 
 **Branch:** `claude/kali-pentest-bot-nbxGO`
 **Started:** 2026-02-10
-**Status:** Initial infrastructure complete, ready for personality & UI implementation
+**Status:** Kali profile modularization + web remote control dashboard implemented
 
 ---
 
@@ -19,6 +19,69 @@ Transforming Project Inkling into a **Kali Linux penetration testing companion**
 ---
 
 ## ✅ Completed
+
+### 2026-02-10 Addendum + Remote Control Web UI
+
+1. **Pi-first Kali package baseline implemented**
+   - `config.yml` updated with:
+     - `pentest.package_profile: pi-headless-curated`
+     - required tools: `nmap`, `hydra`, `nikto`
+     - optional tools: `msfconsole`, `sqlmap`, `aircrack-ng`
+     - enabled modular profiles: `information-gathering`, `web`, `vulnerability`, `passwords`
+   - Profile-aware install guidance now includes:
+     - Pi baseline command
+     - optional tool install command
+     - full profile command (`kali-linux-default`)
+     - profile mix install command
+
+2. **Modular Kali profile architecture added**
+   - New `core/kali_profiles.py` defines grouped profile toolsets.
+   - `core/kali_tools.py` now supports:
+     - profile catalog listing
+     - per-profile status checks
+     - generated install commands for selected profile mixes
+     - required vs optional missing tool breakdown
+
+3. **MCP Kali server expanded**
+   - Added:
+     - `pentest_profiles_list`
+     - `pentest_profile_status`
+     - `pentest_profile_install_command`
+   - Existing scan/webscan/exploit/session-safe tools remain available.
+
+4. **`/tools` command expanded in SSH + Web**
+   - Supports:
+     - `/tools`
+     - `/tools profiles`
+     - `/tools profile <comma-separated-profiles>`
+     - `/tools install <comma-separated-profiles>`
+   - Required missing tools are treated as blocking guidance.
+   - Optional missing tools are warnings with graceful degradation.
+
+5. **Web UI turned into a remote-control dashboard**
+   - Command palette is now generated dynamically from `core/commands.py` (no hardcoded drift).
+   - Added live dashboard panel for:
+     - system stats (CPU/memory/temp/uptime)
+     - WiFi/BLE status
+     - Kali readiness summary
+     - control-plane status (command count + web `/bash` state)
+   - Added `/api/dashboard` endpoint for UI polling.
+   - Web mode now supports remote `/bash` command execution with timeout/output caps.
+
+6. **Command registry parity fixes**
+   - Added task commands to shared registry so web/ssh command resolution is consistent:
+     - `tasks`, `task`, `done`, `cancel`, `delete`, `taskstats`, `find`, `journal`
+   - Removed unsupported `/top` registry entry (no handler implemented).
+   - Updated help rendering (web + ssh) to include full active categories and Kali `/tools` shortcuts.
+
+7. **Documentation + tests updated**
+   - `docs/guides/WEB_COMMANDS.md` rewritten for current remote-control behavior.
+   - Added `tests/test_web_remote_control.py`.
+   - Updated `tests/test_commands.py` for current registry.
+   - Verification:
+     - `py_compile` on updated modules
+     - `pytest` subset: 20 passed
+
 
 ### Core Infrastructure (979 lines)
 

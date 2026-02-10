@@ -40,11 +40,12 @@ def test_get_commands_by_category():
 
     # Check expected categories exist
     assert "info" in categories
-    assert "social" in categories
     assert "personality" in categories
     assert "system" in categories
     assert "display" in categories
     assert "session" in categories
+    assert "tasks" in categories
+    assert "crypto" in categories
 
     # Verify some specific commands are in correct categories
     info_commands = [c.name for c in categories["info"]]
@@ -52,9 +53,10 @@ def test_get_commands_by_category():
     assert "level" in info_commands
     assert "stats" in info_commands
 
-    social_commands = [c.name for c in categories["social"]]
-    assert "dream" in social_commands
-    assert "fish" in social_commands
+    task_commands = [c.name for c in categories["tasks"]]
+    assert "tasks" in task_commands
+    assert "task" in task_commands
+    assert "done" in task_commands
 
 
 def test_command_count():
@@ -68,23 +70,28 @@ def test_command_count():
     assert "level" in command_names
     assert "prestige" in command_names
 
-    # Social commands
-    assert "dream" in command_names
-    assert "fish" in command_names
-    assert "queue" in command_names
-
     # System commands
     assert "system" in command_names
     assert "config" in command_names
-    assert "identity" in command_names
+    assert "tools" in command_names
+    assert "wifi" in command_names
+    assert "wifiscan" in command_names
 
-    # Display commands
+    # Task commands
+    assert "tasks" in command_names
+    assert "task" in command_names
+    assert "done" in command_names
+    assert "cancel" in command_names
+    assert "delete" in command_names
+
+    # Display + utility commands
     assert "face" in command_names
     assert "faces" in command_names
     assert "refresh" in command_names
+    assert "memory" in command_names
 
-    # Should have at least 15 commands
-    assert len(COMMANDS) >= 15
+    # Registry should contain a broad command surface.
+    assert len(COMMANDS) >= 35
 
 
 def test_handler_naming_convention():
@@ -104,13 +111,6 @@ def test_requirements():
 
     config_cmd = get_command("config")
     assert config_cmd.requires_brain
-
-    # API-dependent commands
-    dream_cmd = get_command("dream")
-    assert dream_cmd.requires_api
-
-    fish_cmd = get_command("fish")
-    assert fish_cmd.requires_api
 
     # Commands that don't require special features
     mood_cmd = get_command("mood")

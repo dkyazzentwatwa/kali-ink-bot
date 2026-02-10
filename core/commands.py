@@ -55,12 +55,12 @@ COMMANDS: List[Command] = [
     Command("remove", "Remove coin from watchlist", "cmd_remove", "crypto"),
     Command("alert", "Set price alert", "cmd_alert", "crypto"),
     Command("alerts", "List active price alerts", "cmd_alerts", "crypto"),
-    Command("top", "Show top gainers/losers", "cmd_top", "crypto"),
+    # NOTE: /top intentionally omitted until a concrete handler is implemented.
 
     # Scheduler commands
     Command("schedule", "Manage scheduled price checks", "cmd_schedule", "scheduler"),
 
-    # New utility commands
+    # Utility commands
     Command("thoughts", "Show recent autonomous thoughts", "cmd_thoughts", "info"),
     Command("memory", "Show memory stats and entries", "cmd_memory", "info"),
     Command("settings", "Show current settings (SSH)", "cmd_settings", "system"),
@@ -70,6 +70,16 @@ COMMANDS: List[Command] = [
     Command("wifi", "Show WiFi status and saved networks", "cmd_wifi", "system"),
     Command("btcfg", "Start BLE WiFi configuration (15 min)", "cmd_btcfg", "system"),
     Command("wifiscan", "Scan for nearby WiFi networks", "cmd_wifiscan", "system"),
+
+    # Task commands
+    Command("tasks", "List tasks with optional filters", "cmd_tasks", "tasks"),
+    Command("task", "Create or show a task", "cmd_task", "tasks"),
+    Command("done", "Mark a task as complete", "cmd_done", "tasks"),
+    Command("cancel", "Cancel a task", "cmd_cancel", "tasks"),
+    Command("delete", "Delete a task permanently", "cmd_delete", "tasks"),
+    Command("taskstats", "Show task statistics", "cmd_taskstats", "tasks"),
+    Command("find", "Search tasks by keyword", "cmd_find", "tasks"),
+    Command("journal", "Show recent journal entries", "cmd_journal", "tasks"),
 
     # Play commands
     Command("walk", "Go for a walk (boosts energy +3 XP)", "cmd_walk", "play"),

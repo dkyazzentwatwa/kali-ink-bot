@@ -29,6 +29,21 @@ Supported when users want the broad official Kali package set.
 sudo apt install -y kali-linux-default
 ```
 
+### Modular metapackage groups (new)
+
+These profile groups can be mixed as needed:
+
+- `information-gathering` -> `kali-tools-information-gathering`
+- `web` -> `kali-tools-web`
+- `vulnerability` -> `kali-tools-vulnerability`
+- `passwords` -> `kali-tools-passwords`
+
+Combined install example:
+
+```bash
+sudo apt install -y kali-tools-information-gathering kali-tools-web kali-tools-vulnerability kali-tools-passwords
+```
+
 ## Runtime tool status model
 
 Tool availability is categorized into:
@@ -39,6 +54,7 @@ Tool availability is categorized into:
 Status sources:
 
 - `core/kali_tools.py`: `get_tools_status()`
+- `core/kali_tools.py`: `get_profiles_catalog()`, `get_profile_status()`, `get_profile_install_command()`
 - MCP: `pentest_tools_status`
 - Chat command: `/tools` in SSH and web modes
 
@@ -55,11 +71,20 @@ Status sources:
    - Optional advanced tools
    - Full profile
 
+Subcommands:
+
+- `/tools profiles` -> list available modular groups
+- `/tools profile web,passwords` -> profile-specific install/missing status
+- `/tools install web,vulnerability,passwords,information-gathering` -> apt command generator
+
 ## MCP behaviors
 
 `mcp_servers/kali.py` includes:
 
 - `pentest_tools_status`
+- `pentest_profiles_list`
+- `pentest_profile_status`
+- `pentest_profile_install_command`
 - `pentest_scan`
 - `pentest_web_scan`
 - `pentest_exploit` (MVP safe stub)

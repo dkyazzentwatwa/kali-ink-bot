@@ -22,16 +22,38 @@ class InfoCommands(CommandHandler):
             "system": "System",
             "display": "Display",
             "session": "Session",
+            "crypto": "Crypto",
+            "play": "Play & Energy",
         }
 
-        for cat_key in ["info", "personality", "tasks", "scheduler", "system", "display", "session"]:
+        arg_commands = {
+            "face", "ask", "task", "done", "cancel", "delete", "schedule",
+            "bash", "tools", "add", "remove", "alert", "chart", "focus",
+        }
+        ordered_categories = [
+            "info", "personality", "tasks", "scheduler", "system", "display",
+            "crypto", "play", "session",
+        ]
+
+        for cat_key in ordered_categories:
             if cat_key in categories:
                 response_lines.append(f"\n{category_titles.get(cat_key, cat_key.title())}:")
                 for cmd in categories[cat_key]:
                     usage = f"/{cmd.name}"
-                    if cmd.name in ("face", "ask", "task", "done", "cancel", "delete", "schedule", "bash"):
+                    if cmd.name in arg_commands:
                         usage += " <arg>"
                     response_lines.append(f"  {usage} - {cmd.description}")
+
+        if "tools" in [cmd.name for cmd in categories.get("system", [])]:
+            response_lines.extend(
+                [
+                    "\nKali Tools Shortcuts:",
+                    "  /tools - Baseline Kali status",
+                    "  /tools profiles - List modular profile groups",
+                    "  /tools profile web,passwords - Profile-specific status",
+                    "  /tools install web,vulnerability - Install command generator",
+                ]
+            )
 
         response_lines.append("\n\nJust type (no /) to chat with AI")
 

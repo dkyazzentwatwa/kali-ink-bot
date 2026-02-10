@@ -287,16 +287,26 @@ class SSHChatMode:
             "personality": "Personality",
             "play": "Play & Energy",
             "tasks": "Task Management",
+            "scheduler": "Scheduler",
             "system": "System",
             "display": "Display",
+            "crypto": "Crypto",
         }
 
-        for cat_key in ["session", "info", "personality", "play", "tasks", "system", "display"]:
+        arg_commands = {
+            "face", "ask", "task", "done", "cancel", "delete", "schedule",
+            "bash", "tools", "add", "remove", "alert", "chart", "focus", "find",
+        }
+
+        for cat_key in [
+            "session", "info", "personality", "play", "tasks",
+            "scheduler", "system", "display", "crypto",
+        ]:
             if cat_key in categories:
                 print(f"{Colors.BOLD}{category_titles.get(cat_key, cat_key.title())}:{Colors.RESET}")
                 for cmd in categories[cat_key]:
                     usage = f"/{cmd.name}"
-                    if cmd.name in ("face", "ask", "task", "done", "cancel", "delete", "schedule", "bash"):
+                    if cmd.name in arg_commands:
                         usage += " <arg>"
                     print(f"  {usage:14} {cmd.description}")
                 print()
@@ -395,7 +405,7 @@ class SSHChatMode:
         """Show system stats."""
         self._print_system()
 
-    async def cmd_tools(self) -> None:
+    async def cmd_tools(self, args: str = "") -> None:
         """Show profile-aware Kali tool install status."""
         pentest_cfg = self._config.get("pentest", {})
         manager = KaliToolManager(
@@ -403,21 +413,56 @@ class SSHChatMode:
             package_profile=pentest_cfg.get("package_profile", "pi-headless-curated"),
             required_tools=pentest_cfg.get("required_tools"),
             optional_tools=pentest_cfg.get("optional_tools"),
+            enabled_profiles=pentest_cfg.get("enabled_profiles"),
         )
+        args = (args or "").strip()
+        if args == "profiles":
+            print(f"{Colors.BOLD}Available Kali Profiles{Colors.RESET}")
+            for profile in manager.get_profiles_catalog():
+                print(
+                    f"- {profile['name']:24} {profile['package']:32} "
+                    f"({profile['tool_count']} tools)"
+                )
+            return
+
+        if args.startswith("profile "):
+            names = [n.strip() for n in args.removeprefix("profile ").replace(",", " ").split() if n.strip()]
+            profile_status = manager.get_profile_status(names, refresh=True)
+            print(f"{Colors.BOLD}Profile Status{Colors.RESET}")
+            for name, detail in profile_status["profiles"].items():
+                print(
+                    f"- {name}: {detail['installed_count']}/{detail['total_tools']} installed "
+                    f"(missing {detail['missing_count']})"
+                )
+            print(f"Install command: {profile_status['install_command']}")
+            return
+
+        if args.startswith("install "):
+            names = [n.strip() for n in args.removeprefix("install ").replace(",", " ").split() if n.strip()]
+            print(manager.get_profile_install_command(names))
+            return
+
         status = manager.get_tools_status(refresh=True)
+        def _fmt_items(items: list[str], limit: int = 12) -> str:
+            if len(items) <= limit:
+                return ", ".join(items)
+            hidden = len(items) - limit
+            return f"{', '.join(items[:limit])}, ... (+{hidden} more)"
 
         print(f"{Colors.BOLD}Kali Tool Status ({status['package_profile']}){Colors.RESET}")
+        if status["enabled_profiles"]:
+            print(f"Enabled profiles: {', '.join(status['enabled_profiles'])}")
         print(f"Installed: {', '.join(status['installed']) or 'none'}")
 
         if status["required_missing"]:
-            print(f"{Colors.ERROR}Missing required: {', '.join(status['required_missing'])}{Colors.RESET}")
+            print(f"{Colors.ERROR}Missing required: {_fmt_items(status['required_missing'])}{Colors.RESET}")
             print("Install baseline:")
             print(f"  {status['install_guidance']['pi_baseline']}")
         else:
             print(f"{Colors.SUCCESS}Required tools OK{Colors.RESET}")
 
         if status["optional_missing"]:
-            print(f"{Colors.INFO}Missing optional: {', '.join(status['optional_missing'])}{Colors.RESET}")
+            print(f"{Colors.INFO}Missing optional: {_fmt_items(status['optional_missing'])}{Colors.RESET}")
             print("Optional install:")
             print(f"  {status['install_guidance']['optional_tools']}")
         else:
@@ -425,6 +470,9 @@ class SSHChatMode:
 
         print("Full profile option:")
         print(f"  {status['install_guidance']['full_profile']}")
+        if status["install_guidance"]["profile_mix"] != "No profiles selected.":
+            print("Profile mix option:")
+            print(f"  {status['install_guidance']['profile_mix']}")
 
     async def cmd_traits(self) -> None:
         """Show personality traits."""

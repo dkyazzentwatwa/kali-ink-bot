@@ -242,6 +242,12 @@ pentest:
   # Default profile for Raspberry Pi deployments.
   package_profile: "pi-headless-curated"
   data_dir: "~/.inkling/pentest"
+  # Modular Kali profile groups to track together.
+  enabled_profiles:
+    - "information-gathering"
+    - "web"
+    - "vulnerability"
+    - "passwords"
 
   # Required tools for baseline pentest workflows.
   required_tools:
@@ -341,6 +347,11 @@ web:
 
   # Web UI authentication (reads from SERVER_PW environment variable)
   web_password: ${SERVER_PW}  # Set via: export SERVER_PW="your-password"
+
+  # Remote command execution controls for /bash in web mode
+  allow_bash: true
+  command_timeout_seconds: 8
+  max_output_bytes: 8192
 
 # Battery Management (for PiSugar or similar)
 battery:

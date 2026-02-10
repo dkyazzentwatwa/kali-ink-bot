@@ -19,11 +19,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 import shutil
 
+from .kali_profiles import get_profile, list_profiles
+
 logger = logging.getLogger(__name__)
 
 
 DEFAULT_REQUIRED_TOOLS = ["nmap", "hydra", "nikto"]
 DEFAULT_OPTIONAL_TOOLS = ["msfconsole", "sqlmap", "aircrack-ng"]
+DEFAULT_ENABLED_PROFILES = [
+    "information-gathering",
+    "web",
+    "vulnerability",
+    "passwords",
+]
 
 
 @dataclass
@@ -84,18 +92,105 @@ class KaliToolManager:
         package_profile: str = "pi-headless-curated",
         required_tools: Optional[List[str]] = None,
         optional_tools: Optional[List[str]] = None,
+        enabled_profiles: Optional[List[str]] = None,
     ):
         """Initialize Kali tool manager."""
         self.data_dir = Path(data_dir).expanduser()
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.package_profile = package_profile
+        profile_seed = enabled_profiles if enabled_profiles is not None else DEFAULT_ENABLED_PROFILES.copy()
+        self.enabled_profiles = self._normalize_profile_names(profile_seed)
         self.required_tools = required_tools or DEFAULT_REQUIRED_TOOLS.copy()
-        self.optional_tools = optional_tools or DEFAULT_OPTIONAL_TOOLS.copy()
+        profile_tools = self._profile_tool_set(self.enabled_profiles)
+        self.optional_tools = sorted(set((optional_tools or DEFAULT_OPTIONAL_TOOLS.copy()) + list(profile_tools)))
         self._tool_paths: Dict[str, Optional[str]] = {}
         self._tools_installed: Dict[str, bool] = {}
 
         # Check installed tools immediately for status APIs and fast-fail checks.
         self._check_tools()
+
+    @staticmethod
+    def _normalize_profile_names(profile_names: List[str]) -> List[str]:
+        """Normalize and dedupe profile names while preserving order."""
+        seen = set()
+        normalized: List[str] = []
+        for name in profile_names:
+            key = name.strip().lower()
+            if not key or key in seen:
+                continue
+            if get_profile(key):
+                normalized.append(key)
+                seen.add(key)
+        return normalized
+
+    @staticmethod
+    def _profile_tool_set(profile_names: List[str]) -> set[str]:
+        """Return unique tool names for selected profiles."""
+        tools: set[str] = set()
+        for name in profile_names:
+            profile = get_profile(name)
+            if profile:
+                tools.update(profile.tools)
+        return tools
+
+    def get_profiles_catalog(self) -> List[Dict[str, Any]]:
+        """Return all available modular Kali profiles."""
+        profiles = []
+        for profile in list_profiles():
+            profiles.append(
+                {
+                    "name": profile.name,
+                    "package": profile.package,
+                    "description": profile.description,
+                    "tool_count": len(profile.tools),
+                }
+            )
+        return profiles
+
+    def get_profile_install_command(self, profile_names: List[str]) -> str:
+        """Build apt install command for one or more profile names."""
+        names = self._normalize_profile_names(profile_names)
+        packages: List[str] = []
+        for name in names:
+            profile = get_profile(name)
+            if profile:
+                packages.append(profile.package)
+        if not packages:
+            return "No valid profile selected."
+        return f"sudo apt install -y {' '.join(packages)}"
+
+    def get_profile_status(
+        self,
+        profile_names: Optional[List[str]] = None,
+        refresh: bool = False,
+    ) -> Dict[str, Any]:
+        """Return status breakdown by profile, including install guidance."""
+        if refresh:
+            self._check_tools()
+
+        names = self._normalize_profile_names(profile_names or self.enabled_profiles)
+        details: Dict[str, Any] = {}
+        for name in names:
+            profile = get_profile(name)
+            if not profile:
+                continue
+            installed = [tool for tool in profile.tools if self._tools_installed.get(tool, False)]
+            missing = [tool for tool in profile.tools if not self._tools_installed.get(tool, False)]
+            details[name] = {
+                "package": profile.package,
+                "description": profile.description,
+                "total_tools": len(profile.tools),
+                "installed_count": len(installed),
+                "missing_count": len(missing),
+                "installed": installed,
+                "missing": missing,
+            }
+
+        return {
+            "selected_profiles": names,
+            "profiles": details,
+            "install_command": self.get_profile_install_command(names),
+        }
 
     def _check_tools(self) -> Dict[str, bool]:
         """Check which Kali tools are installed and cache the result."""
@@ -133,14 +228,28 @@ class KaliToolManager:
         optional_missing = [tool for tool in self.optional_tools if not self._tools_installed.get(tool, False)]
         installed = sorted([tool for tool, ok in self._tools_installed.items() if ok])
 
+        profile_status = self.get_profile_status(self.enabled_profiles, refresh=False)
+        enabled_profile_packages = [
+            profile_status["profiles"][name]["package"]
+            for name in profile_status["selected_profiles"]
+            if name in profile_status["profiles"]
+        ]
+        profile_mix_cmd = (
+            f"sudo apt install -y {' '.join(enabled_profile_packages)}"
+            if enabled_profile_packages
+            else "No profiles selected."
+        )
+
         return {
             "package_profile": self.package_profile,
             "required_tools": self.required_tools.copy(),
             "optional_tools": self.optional_tools.copy(),
+            "enabled_profiles": self.enabled_profiles.copy(),
             "installed": installed,
             "required_missing": required_missing,
             "optional_missing": optional_missing,
             "blocking": len(required_missing) > 0,
+            "profile_status": profile_status,
             "install_guidance": {
                 "pi_baseline": (
                     "sudo apt update && "
@@ -148,6 +257,7 @@ class KaliToolManager:
                 ),
                 "optional_tools": "sudo apt install -y metasploit-framework sqlmap aircrack-ng",
                 "full_profile": "sudo apt install -y kali-linux-default",
+                "profile_mix": profile_mix_cmd,
             },
         }
 

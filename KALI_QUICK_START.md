@@ -35,6 +35,9 @@ From SSH mode:
 
 ```text
 /tools
+/tools profiles
+/tools profile web,passwords
+/tools install web,vulnerability,passwords,information-gathering
 ```
 
 Expected behavior:
@@ -42,6 +45,7 @@ Expected behavior:
 - Missing required tools are reported as blocking.
 - Missing optional tools are warnings.
 - Install guidance is shown for both baseline and full profile.
+- Profile commands let you inspect/install modular groups from Kali metapackages.
 
 ## 4. Validate MCP status
 

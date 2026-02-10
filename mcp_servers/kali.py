@@ -28,6 +28,7 @@ class KaliMCPServer:
             package_profile=self.pentest_config.get("package_profile", "pi-headless-curated"),
             required_tools=self.pentest_config.get("required_tools"),
             optional_tools=self.pentest_config.get("optional_tools"),
+            enabled_profiles=self.pentest_config.get("enabled_profiles"),
         )
 
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -77,6 +78,38 @@ class KaliMCPServer:
                         "timing": {"type": "number"},
                     },
                     "required": ["target"],
+                },
+            },
+            {
+                "name": "pentest_profiles_list",
+                "description": "List modular Kali profile groups and metapackages.",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "pentest_profile_status",
+                "description": "Get installed/missing status for selected profile names.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "profile_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        }
+                    },
+                },
+            },
+            {
+                "name": "pentest_profile_install_command",
+                "description": "Generate apt command for one or more profile names.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "profile_names": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        }
+                    },
+                    "required": ["profile_names"],
                 },
             },
             {
@@ -133,6 +166,12 @@ class KaliMCPServer:
             result = self._tool_tools_status()
         elif tool_name == "pentest_scan":
             result = self._tool_scan(arguments)
+        elif tool_name == "pentest_profiles_list":
+            result = self._tool_profiles_list()
+        elif tool_name == "pentest_profile_status":
+            result = self._tool_profile_status(arguments)
+        elif tool_name == "pentest_profile_install_command":
+            result = self._tool_profile_install_command(arguments)
         elif tool_name == "pentest_web_scan":
             result = self._tool_web_scan(arguments)
         elif tool_name == "pentest_exploit":
@@ -175,6 +214,22 @@ class KaliMCPServer:
             }
 
         return {"success": True, "scan": result.__dict__}
+
+    def _tool_profiles_list(self) -> Dict[str, Any]:
+        return {"success": True, "profiles": self.tool_manager.get_profiles_catalog()}
+
+    def _tool_profile_status(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        names = args.get("profile_names") or []
+        return {"success": True, **self.tool_manager.get_profile_status(names, refresh=True)}
+
+    def _tool_profile_install_command(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        names = args.get("profile_names")
+        if not names:
+            return {"success": False, "error": "profile_names is required"}
+        return {
+            "success": True,
+            "install_command": self.tool_manager.get_profile_install_command(names),
+        }
 
     def _tool_web_scan(self, args: Dict[str, Any]) -> Dict[str, Any]:
         target = args.get("target")

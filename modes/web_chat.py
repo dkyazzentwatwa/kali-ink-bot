@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import threading
+import inspect
 import hashlib
 import hmac
 import secrets
@@ -124,6 +125,15 @@ class WebChatMode:
         self._running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._message_queue: Queue = Queue()
+        web_cfg = self._config.get("web", {})
+        ble_cfg = self._config.get("ble", {})
+        self._allow_web_bash = web_cfg.get("allow_bash", ble_cfg.get("allow_bash", True))
+        self._bash_timeout_seconds = web_cfg.get(
+            "command_timeout_seconds", ble_cfg.get("command_timeout_seconds", 8)
+        )
+        self._bash_max_output_bytes = web_cfg.get(
+            "max_output_bytes", ble_cfg.get("max_output_bytes", 8192)
+        )
 
         # Import faces from UI module
         # Use Unicode faces for web (better appearance), with ASCII fallback
@@ -223,6 +233,173 @@ class WebChatMode:
         """Record a failed login attempt."""
         self._login_attempts[ip].append(time.time())
 
+    def _build_command_palette(self) -> list[dict]:
+        """Build command palette data from the shared command registry."""
+        category_titles = {
+            "info": "Info",
+            "personality": "Personality",
+            "tasks": "Tasks",
+            "scheduler": "Scheduler",
+            "system": "System",
+            "display": "Display",
+            "crypto": "Crypto",
+            "play": "Play",
+            "session": "Session",
+        }
+        command_examples = {
+            "task": "/task Review pentest findings",
+            "done": "/done <task_id>",
+            "cancel": "/cancel <task_id>",
+            "delete": "/delete <task_id>",
+            "find": "/find keyword",
+            "ask": "/ask What should we scan next?",
+            "face": "/face happy",
+            "schedule": "/schedule list",
+            "bash": "/bash uname -a",
+            "add": "/add BTC",
+            "remove": "/remove BTC",
+            "alert": "/alert BTC > 70000",
+            "chart": "/chart BTC 4h",
+            "focus": "/focus start",
+            "tools": "/tools profiles",
+        }
+        category_order = [
+            "info", "personality", "tasks", "scheduler", "system",
+            "display", "crypto", "play", "session",
+        ]
+
+        categories = get_commands_by_category()
+        groups: list[dict] = []
+        for category in category_order:
+            commands = categories.get(category, [])
+            if not commands:
+                continue
+            group_commands: list[dict] = []
+            for cmd in commands:
+                handler_name = f"_cmd_{cmd.name}"
+                if not hasattr(self, handler_name):
+                    continue
+                if cmd.requires_brain and not self.brain:
+                    continue
+                if cmd.requires_api and not getattr(self, "api_client", None):
+                    continue
+
+                group_commands.append(
+                    {
+                        "label": cmd.name,
+                        "description": cmd.description,
+                        "command": f"/{cmd.name}",
+                        "example": command_examples.get(cmd.name, f"/{cmd.name}"),
+                        "needs_input": cmd.name in command_examples,
+                    }
+                )
+
+            if group_commands:
+                groups.append(
+                    {
+                        "name": category_titles.get(category, category.title()),
+                        "commands": group_commands,
+                    }
+                )
+
+        # Add high-value pentest subcommands as first-class quick actions.
+        groups.append(
+            {
+                "name": "Kali",
+                "commands": [
+                    {
+                        "label": "tools",
+                        "description": "Show baseline Kali readiness",
+                        "command": "/tools",
+                        "example": "/tools",
+                        "needs_input": False,
+                    },
+                    {
+                        "label": "profiles",
+                        "description": "List modular Kali groups",
+                        "command": "/tools profiles",
+                        "example": "/tools profiles",
+                        "needs_input": False,
+                    },
+                    {
+                        "label": "profile status",
+                        "description": "Check selected profile groups",
+                        "command": "/tools profile web,passwords",
+                        "example": "/tools profile web,passwords",
+                        "needs_input": True,
+                    },
+                    {
+                        "label": "install mix",
+                        "description": "Generate apt install command",
+                        "command": "/tools install web,vulnerability,passwords,information-gathering",
+                        "example": "/tools install web,vulnerability,passwords,information-gathering",
+                        "needs_input": True,
+                    },
+                ],
+            }
+        )
+        return groups
+
+    def _build_dashboard_snapshot(self) -> dict:
+        """Gather a lightweight web dashboard snapshot."""
+        from core import system_stats
+        from core.wifi_utils import get_current_wifi, is_btcfg_running
+
+        stats = system_stats.get_all_stats()
+        focus = self.focus_manager.get_display_snapshot() if self.focus_manager else {"focus_active": False}
+
+        wifi_connected = False
+        wifi_ssid = ""
+        wifi_signal = 0
+        try:
+            wifi = get_current_wifi()
+            wifi_connected = wifi.connected
+            wifi_ssid = wifi.ssid or ""
+            wifi_signal = wifi.signal_strength or 0
+        except Exception:
+            pass
+
+        pentest_cfg = self._config.get("pentest", {})
+        tool_manager = KaliToolManager(
+            data_dir=pentest_cfg.get("data_dir", "~/.inkling/pentest"),
+            package_profile=pentest_cfg.get("package_profile", "pi-headless-curated"),
+            required_tools=pentest_cfg.get("required_tools"),
+            optional_tools=pentest_cfg.get("optional_tools"),
+            enabled_profiles=pentest_cfg.get("enabled_profiles"),
+        )
+        tools = tool_manager.get_tools_status(refresh=False)
+
+        return {
+            "system": {
+                "cpu": stats.get("cpu", 0),
+                "memory": stats.get("memory", 0),
+                "temperature": stats.get("temperature", 0),
+                "uptime": stats.get("uptime", "--:--:--"),
+            },
+            "wifi": {
+                "connected": wifi_connected,
+                "ssid": wifi_ssid,
+                "signal": wifi_signal,
+                "btcfg_running": is_btcfg_running(),
+            },
+            "tools": {
+                "package_profile": tools.get("package_profile"),
+                "enabled_profiles": tools.get("enabled_profiles", []),
+                "required_missing_count": len(tools.get("required_missing", [])),
+                "optional_missing_count": len(tools.get("optional_missing", [])),
+                "installed_count": len(tools.get("installed", [])),
+            },
+            "focus": {
+                "active": bool(focus.get("focus_active")),
+                "phase": focus.get("focus_phase", ""),
+                "remaining_sec": focus.get("focus_remaining_sec", 0),
+            },
+            "control": {
+                "command_count": sum(len(group["commands"]) for group in self._build_command_palette()),
+                "bash_enabled": bool(self._allow_web_bash),
+            },
+        }
+
     def _setup_routes(self) -> None:
         """Set up Bottle routes."""
 
@@ -268,12 +445,16 @@ class WebChatMode:
             auth_check = self._require_auth()
             if auth_check:
                 return auth_check
+            command_groups = self._build_command_palette()
+            dashboard = self._build_dashboard_snapshot()
             return template(
                 HTML_TEMPLATE,
                 name=self.personality.name,
                 face=self._get_face_str(),
                 status=self.personality.get_status_line(),
                 thought=self.personality.last_thought or "",
+                command_groups=command_groups,
+                dashboard=dashboard,
             )
 
         @self._app.route("/settings")
@@ -379,6 +560,14 @@ class WebChatMode:
                 "thought": self.personality.last_thought or "",
                 "focus": self.focus_manager.get_display_snapshot() if self.focus_manager else {"focus_active": False},
             })
+
+        @self._app.route("/api/dashboard")
+        def dashboard_state():
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+            return json.dumps(self._build_dashboard_snapshot())
 
         @self._app.route("/api/settings", method="GET")
         def get_settings():
@@ -1196,7 +1385,7 @@ class WebChatMode:
         """Show system stats."""
         return self._system_cmds.system()
 
-    def _cmd_tools(self) -> Dict[str, Any]:
+    def _cmd_tools(self, args: str = "") -> Dict[str, Any]:
         """Show profile-aware Kali tool install status."""
         pentest_cfg = self._config.get("pentest", {})
         manager = KaliToolManager(
@@ -1204,25 +1393,64 @@ class WebChatMode:
             package_profile=pentest_cfg.get("package_profile", "pi-headless-curated"),
             required_tools=pentest_cfg.get("required_tools"),
             optional_tools=pentest_cfg.get("optional_tools"),
+            enabled_profiles=pentest_cfg.get("enabled_profiles"),
         )
+        args = (args or "").strip()
+        if args == "profiles":
+            lines = ["Available Kali profiles:"]
+            for profile in manager.get_profiles_catalog():
+                lines.append(
+                    f"- {profile['name']} ({profile['package']}) - {profile['tool_count']} tools"
+                )
+            return {"response": "\n".join(lines), "status": "tools", "face": self._get_face_str()}
+
+        if args.startswith("profile "):
+            names = [n.strip() for n in args.removeprefix("profile ").replace(",", " ").split() if n.strip()]
+            profile_status = manager.get_profile_status(names, refresh=True)
+            lines = ["Profile status:"]
+            for name, detail in profile_status["profiles"].items():
+                lines.append(
+                    f"- {name}: {detail['installed_count']}/{detail['total_tools']} installed "
+                    f"(missing {detail['missing_count']})"
+                )
+            lines.append(f"Install command: {profile_status['install_command']}")
+            return {"response": "\n".join(lines), "status": "tools", "face": self._get_face_str()}
+
+        if args.startswith("install "):
+            names = [n.strip() for n in args.removeprefix("install ").replace(",", " ").split() if n.strip()]
+            return {
+                "response": manager.get_profile_install_command(names),
+                "status": "tools",
+                "face": self._get_face_str(),
+            }
+
         status = manager.get_tools_status(refresh=True)
+        def _fmt_items(items: list[str], limit: int = 12) -> str:
+            if len(items) <= limit:
+                return ", ".join(items)
+            hidden = len(items) - limit
+            return f"{', '.join(items[:limit])}, ... (+{hidden} more)"
 
         lines = [f"Kali tool status ({status['package_profile']})"]
+        if status["enabled_profiles"]:
+            lines.append(f"Enabled profiles: {', '.join(status['enabled_profiles'])}")
         lines.append(f"Installed: {', '.join(status['installed']) or 'none'}")
 
         if status["required_missing"]:
-            lines.append(f"Missing required: {', '.join(status['required_missing'])}")
+            lines.append(f"Missing required: {_fmt_items(status['required_missing'])}")
             lines.append(f"Install baseline: {status['install_guidance']['pi_baseline']}")
         else:
             lines.append("Required tools OK")
 
         if status["optional_missing"]:
-            lines.append(f"Missing optional: {', '.join(status['optional_missing'])}")
+            lines.append(f"Missing optional: {_fmt_items(status['optional_missing'])}")
             lines.append(f"Optional install: {status['install_guidance']['optional_tools']}")
         else:
             lines.append("Optional tools OK")
 
         lines.append(f"Full profile option: {status['install_guidance']['full_profile']}")
+        if status["install_guidance"]["profile_mix"] != "No profiles selected.":
+            lines.append(f"Profile mix option: {status['install_guidance']['profile_mix']}")
         return {"response": "\n".join(lines), "status": "tools", "face": self._get_face_str()}
 
     def _cmd_config(self) -> Dict[str, Any]:
@@ -1352,7 +1580,7 @@ class WebChatMode:
         if cmd_obj.requires_brain and not self.brain:
             return {"response": "This command requires AI features.", "error": True}
 
-        if cmd_obj.requires_api and not self.api_client:
+        if cmd_obj.requires_api and not getattr(self, "api_client", None):
             return {"response": "This command requires social features (set api_base in config).", "error": True}
 
         # Get handler method
@@ -1361,12 +1589,13 @@ class WebChatMode:
         if not handler:
             return {"response": f"Command handler not implemented: {cmd_obj.name}", "error": True}
 
-        # Call handler with args if needed
+        # Call handler with args if needed (signature-based, no hardcoded command list).
         try:
-            if cmd_obj.name in ("face", "dream", "ask", "schedule", "bash", "task", "done", "cancel", "delete", "tasks", "find", "focus"):
-                return handler(args) if args or cmd_obj.name in ("tasks", "schedule", "find") else handler()
-            else:
-                return handler()
+            sig = inspect.signature(handler)
+            params = list(sig.parameters.values())
+            if params and params[0].name == "args":
+                return handler(args)
+            return handler()
         except Exception as e:
             import traceback
             error_msg = f"Command error: {str(e)}"
