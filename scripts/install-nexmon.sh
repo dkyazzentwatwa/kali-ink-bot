@@ -243,10 +243,20 @@ make
 
 cd "$NEXMON_DIR"
 
-# Build firmware utilities
-log_info "Building firmware utilities..."
-cd utilities/libnexmon
+# Build isl library (required for firmware patches)
+log_info "Building isl library..."
+cd "$NEXMON_DIR/buildtools/isl-0.10"
+./configure
 make
+cd "$NEXMON_DIR"
+
+# Build mpfr library
+log_info "Building mpfr library..."
+cd "$NEXMON_DIR/buildtools/mpfr-3.1.4"
+autoreconf -f -i 2>/dev/null || true
+./configure
+make
+cd "$NEXMON_DIR"
 
 cd "$NEXMON_DIR"
 
