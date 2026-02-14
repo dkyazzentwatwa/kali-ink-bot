@@ -29,8 +29,11 @@ try:
     from gevent.pywsgi import WSGIServer
     import ptyprocess
     WEBSOCKET_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     WEBSOCKET_AVAILABLE = False
+    import sys
+    print(f"⚠️  WebSocket dependencies missing: {e}", file=sys.stderr)
+    print("   Install with: pip install gevent gevent-websocket ptyprocess", file=sys.stderr)
 
 from core.brain import Brain, AllProvidersExhaustedError, QuotaExceededError
 from core.display import DisplayManager

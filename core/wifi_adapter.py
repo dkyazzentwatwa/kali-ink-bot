@@ -43,8 +43,10 @@ KNOWN_MONITOR_CHIPSETS = {
     # Intel (limited injection)
     "iwlwifi": {"name": "Intel Wireless", "monitor": True, "injection": False},
 
-    # Broadcom
-    "brcmfmac": {"name": "Broadcom FullMAC", "monitor": False, "injection": False},
+    # Broadcom - Pi Zero 2W built-in WiFi
+    # With Nexmon patch, brcmfmac CAN do monitor mode!
+    # We'll check dynamically if monitor mode is supported
+    "brcmfmac": {"name": "Broadcom BCM43430/43455 (Pi WiFi)", "monitor": True, "injection": True},
     "brcmsmac": {"name": "Broadcom SoftMAC", "monitor": True, "injection": False},
 }
 
@@ -352,9 +354,16 @@ class AdapterManager:
         """
         Enable monitor mode on an interface.
 
+        Uses Pwnagotchi-style approach:
+        1. Unblock rfkill
+        2. Bring interface up
+        3. Disable power save
+        4. Create monitor interface using iw
+        5. Bring monitor interface up
+
         Returns (success, new_interface_name_or_error)
         """
-        # Check if adapter supports monitor mode
+        # Check if adapter exists
         adapter = None
         for a in self.detect_adapters():
             if a.interface == interface:
@@ -364,89 +373,151 @@ class AdapterManager:
         if not adapter:
             return False, f"Interface not found: {interface}"
 
-        if not adapter.monitor_capable:
-            return False, f"Interface {interface} does not support monitor mode"
+        # Check if already in monitor mode or monitor interface exists
+        mon_interface = f"{interface}mon"
+        for a in self._adapters:
+            if a.interface == mon_interface and a.current_mode == "monitor":
+                return True, mon_interface
 
         if adapter.current_mode == "monitor":
-            return True, interface  # Already in monitor mode
+            return True, interface
 
-        try:
-            # Method 1: Try airmon-ng (preferred)
-            result = await asyncio.create_subprocess_exec(
-                "airmon-ng", "start", interface,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=30)
-
-            if result.returncode == 0:
-                # Parse output for new interface name
-                output = stdout.decode()
-                mon_match = re.search(r"\(monitor mode vif enabled (?:for \[\w+\] )?on \[(\w+)\]", output)
-                if mon_match:
-                    new_iface = mon_match.group(1)
-                else:
-                    new_iface = f"{interface}mon"
-
-                # Refresh adapter list
-                self.detect_adapters(refresh=True)
-                return True, new_iface
-        except FileNotFoundError:
-            pass  # airmon-ng not installed, try manual method
-        except asyncio.TimeoutExpired:
-            return False, "airmon-ng timed out"
-        except Exception as e:
-            logger.debug(f"airmon-ng failed: {e}")
-
-        # Method 2: Manual using iw
-        try:
-            # Bring interface down
-            await asyncio.create_subprocess_exec(
-                "ip", "link", "set", interface, "down",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
-            )
-
-            # Set monitor mode
-            result = await asyncio.create_subprocess_exec(
-                "iw", interface, "set", "type", "monitor",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=10)
-
-            if result.returncode != 0:
-                # Bring back up in managed mode
-                await asyncio.create_subprocess_exec(
-                    "ip", "link", "set", interface, "up",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL
+        async def run_cmd(*args, timeout: int = 10) -> Tuple[int, str, str]:
+            """Helper to run command and return (returncode, stdout, stderr)."""
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
-                return False, f"Failed to set monitor mode: {stderr.decode()}"
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                return proc.returncode, stdout.decode(), stderr.decode()
+            except FileNotFoundError:
+                return -1, "", f"Command not found: {args[0]}"
+            except asyncio.TimeoutExpired:
+                return -1, "", "Command timed out"
 
-            # Bring interface up
-            await asyncio.create_subprocess_exec(
-                "ip", "link", "set", interface, "up",
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
+        try:
+            # Step 1: Unblock rfkill
+            await run_cmd("rfkill", "unblock", "all")
+
+            # Step 2: Bring interface up
+            ret, _, err = await run_cmd("ifconfig", interface, "up")
+            if ret != 0:
+                # Try ip link as fallback
+                await run_cmd("ip", "link", "set", interface, "up")
+
+            # Step 3: Disable power save
+            await run_cmd("iw", "dev", interface, "set", "power_save", "off")
+
+            # Step 4: Get phy name for this interface
+            ret, stdout, _ = await run_cmd("iw", "dev", interface, "info")
+            if ret != 0:
+                return False, f"Failed to get interface info: {interface}"
+
+            phy_match = re.search(r"wiphy (\d+)", stdout)
+            if not phy_match:
+                return False, "Could not determine phy for interface"
+
+            phy = f"phy{phy_match.group(1)}"
+
+            # Step 5: Create monitor interface (Pwnagotchi style)
+            ret, _, err = await run_cmd(
+                "iw", "phy", phy, "interface", "add", mon_interface, "type", "monitor"
             )
+            if ret != 0:
+                # Interface might already exist, try removing and recreating
+                await run_cmd("iw", "dev", mon_interface, "del")
+                ret, _, err = await run_cmd(
+                    "iw", "phy", phy, "interface", "add", mon_interface, "type", "monitor"
+                )
+                if ret != 0:
+                    # Fallback: try setting existing interface to monitor mode
+                    await run_cmd("ip", "link", "set", interface, "down")
+                    ret, _, err = await run_cmd("iw", interface, "set", "type", "monitor")
+                    if ret != 0:
+                        await run_cmd("ip", "link", "set", interface, "up")
+                        return False, f"Failed to enable monitor mode: {err}"
+                    await run_cmd("ip", "link", "set", interface, "up")
+                    self.detect_adapters(refresh=True)
+                    return True, interface
+
+            # Step 6: Bring monitor interface up
+            ret, _, err = await run_cmd("ifconfig", mon_interface, "up")
+            if ret != 0:
+                await run_cmd("ip", "link", "set", mon_interface, "up")
 
             # Refresh adapter list
             self.detect_adapters(refresh=True)
-            return True, interface
-        except asyncio.TimeoutExpired:
-            return False, "Command timed out"
+            logger.info(f"Monitor mode enabled: {mon_interface}")
+            return True, mon_interface
+
         except Exception as e:
+            logger.exception("Failed to enable monitor mode")
             return False, str(e)
 
     async def disable_monitor_mode(self, interface: str) -> Tuple[bool, str]:
         """
         Disable monitor mode on an interface.
 
+        Uses Pwnagotchi-style approach:
+        1. Bring monitor interface down
+        2. Delete monitor interface
+        3. Optionally reload brcmfmac driver
+        4. Bring original interface back up
+
         Returns (success, interface_name_or_error)
         """
+        async def run_cmd(*args, timeout: int = 10) -> Tuple[int, str, str]:
+            """Helper to run command."""
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                return proc.returncode, stdout.decode(), stderr.decode()
+            except FileNotFoundError:
+                return -1, "", f"Command not found: {args[0]}"
+            except asyncio.TimeoutExpired:
+                return -1, "", "Command timed out"
+
+        # Determine original interface name
+        if interface.endswith("mon"):
+            orig_interface = interface[:-3]  # Remove 'mon' suffix
+        else:
+            orig_interface = interface
+
         try:
-            # Method 1: Try airmon-ng
+            # Step 1: Bring monitor interface down and delete it
+            await run_cmd("ifconfig", interface, "down")
+            await run_cmd("ip", "link", "set", interface, "down")
+
+            # Step 2: Delete the monitor interface (if it's a separate vif)
+            ret, _, _ = await run_cmd("iw", "dev", interface, "del")
+
+            if ret != 0 and interface == orig_interface:
+                # Interface wasn't a separate vif, set back to managed mode
+                await run_cmd("iw", interface, "set", "type", "managed")
+                await run_cmd("ip", "link", "set", interface, "up")
+
+            # Step 3: Bring original interface back up
+            await run_cmd("ifconfig", orig_interface, "up")
+            await run_cmd("ip", "link", "set", orig_interface, "up")
+
+            # Refresh adapter list
+            self.detect_adapters(refresh=True)
+            logger.info(f"Monitor mode disabled: {interface} -> {orig_interface}")
+            return True, orig_interface
+
+        except Exception as e:
+            logger.exception("Failed to disable monitor mode")
+            return False, str(e)
+
+    async def _disable_monitor_mode_airmon(self, interface: str) -> Tuple[bool, str]:
+        """Legacy airmon-ng method (kept for reference)."""
+        try:
             result = await asyncio.create_subprocess_exec(
                 "airmon-ng", "stop", interface,
                 stdout=asyncio.subprocess.PIPE,
@@ -455,11 +526,9 @@ class AdapterManager:
             stdout, stderr = await asyncio.wait_for(result.communicate(), timeout=30)
 
             if result.returncode == 0:
-                # Parse output for original interface name
                 output = stdout.decode()
                 iface_match = re.search(r"\(monitor mode disabled on \[\w+\]\)", output)
                 if iface_match:
-                    # Extract original interface (usually removes 'mon' suffix)
                     new_iface = interface.replace("mon", "")
                 else:
                     new_iface = interface

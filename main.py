@@ -14,6 +14,14 @@ Environment variables:
     OPENAI_API_KEY      - OpenAI API key (fallback)
 """
 
+# Gevent monkey patching MUST happen before any other imports
+# This is required for WebSocket support in web mode
+try:
+    from gevent import monkey
+    monkey.patch_all(thread=False)  # thread=False to avoid issues with asyncio
+except ImportError:
+    pass  # gevent not installed, WebSocket will be unavailable
+
 import argparse
 import asyncio
 import gc

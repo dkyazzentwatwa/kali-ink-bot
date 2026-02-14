@@ -130,6 +130,83 @@ class WiFiHunter:
         self._session: Optional[aiohttp.ClientSession] = None
         self._is_capturing = False
         self._monitor_interface: Optional[str] = None
+        self._bettercap_proc: Optional[asyncio.subprocess.Process] = None
+
+    async def is_bettercap_running(self) -> bool:
+        """Check if bettercap API is responding."""
+        try:
+            session = await self._get_session()
+            async with session.get(f"{self._api_base}/api/session", timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                return resp.status == 200
+        except Exception:
+            return False
+
+    async def start_bettercap(self, interface: str = None) -> Tuple[bool, str]:
+        """
+        Start bettercap if not already running.
+
+        Args:
+            interface: WiFi interface to use (defaults to self.interface)
+
+        Returns:
+            (success, message)
+        """
+        # Check if already running
+        if await self.is_bettercap_running():
+            return True, "Bettercap already running"
+
+        iface = interface or self._monitor_interface or self.interface
+
+        try:
+            # Start bettercap with REST API enabled
+            cmd = [
+                "bettercap",
+                "-iface", iface,
+                "-api-rest-address", "127.0.0.1",
+                "-api-rest-port", str(DEFAULT_BETTERCAP_PORT),
+                "-api-rest-username", DEFAULT_BETTERCAP_USER,
+                "-api-rest-password", DEFAULT_BETTERCAP_PASS,
+                "-no-colors",
+                "-silent",
+            ]
+
+            logger.info(f"Starting bettercap: {' '.join(cmd)}")
+
+            self._bettercap_proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+
+            # Wait for API to become available
+            for _ in range(30):  # 30 second timeout
+                await asyncio.sleep(1)
+                if await self.is_bettercap_running():
+                    logger.info("Bettercap started successfully")
+                    return True, "Bettercap started"
+
+            # Timeout
+            await self.stop_bettercap()
+            return False, "Bettercap failed to start (timeout)"
+
+        except FileNotFoundError:
+            return False, "Bettercap not installed. Install with: sudo apt install bettercap"
+        except Exception as e:
+            logger.exception("Failed to start bettercap")
+            return False, f"Failed to start bettercap: {e}"
+
+    async def stop_bettercap(self) -> None:
+        """Stop bettercap if we started it."""
+        if self._bettercap_proc:
+            try:
+                self._bettercap_proc.terminate()
+                await asyncio.wait_for(self._bettercap_proc.wait(), timeout=5)
+            except asyncio.TimeoutError:
+                self._bettercap_proc.kill()
+            except Exception as e:
+                logger.warning(f"Error stopping bettercap: {e}")
+            finally:
+                self._bettercap_proc = None
 
     async def _get_session(self) -> aiohttp.ClientSession:
         """Get or create aiohttp session."""
@@ -211,7 +288,11 @@ class WiFiHunter:
         return await self._api_post("/api/session", {"cmd": cmd})
 
     async def close(self) -> None:
-        """Close the aiohttp session."""
+        """Close the aiohttp session and stop bettercap if we started it."""
+        # Stop capture first
+        await self.stop_capture(stop_bettercap=True)
+
+        # Close HTTP session
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
@@ -272,6 +353,8 @@ class WiFiHunter:
         Enables wifi.recon module to passively discover access points
         and clients without sending any packets.
 
+        Will auto-start bettercap if not running.
+
         Raises:
             RuntimeError: If bettercap API is not available
         """
@@ -279,10 +362,22 @@ class WiFiHunter:
             logger.warning("Capture already running")
             return
 
+        # Get interface
+        iface = self._monitor_interface or self.interface
+
+        # Check if bettercap is running, start if not
+        if not await self.is_bettercap_running():
+            logger.info("Bettercap not running, starting...")
+            success, msg = await self.start_bettercap(iface)
+            if not success:
+                raise RuntimeError(msg)
+
         try:
             # Set interface if monitor mode changed it
-            iface = self._monitor_interface or self.interface
             await self._run_command(f"set wifi.interface {iface}")
+
+            # Set handshake capture directory
+            await self._run_command(f"set wifi.handshakes.file {self.handshake_dir}/{{essid}}_{{bssid}}.pcap")
 
             # Enable recon
             await self._run_command("wifi.recon on")
@@ -293,23 +388,30 @@ class WiFiHunter:
             logger.error(f"Failed to start capture: {e}")
             raise RuntimeError(f"Bettercap API not available: {e}")
 
-    async def stop_capture(self) -> None:
+    async def stop_capture(self, stop_bettercap: bool = False) -> None:
         """
         Stop WiFi capture.
 
         Disables wifi.recon and clears captured data.
+
+        Args:
+            stop_bettercap: If True, also stop bettercap process
         """
-        if not self._is_capturing:
+        if not self._is_capturing and not stop_bettercap:
             return
 
         try:
-            await self._run_command("wifi.recon off")
-            await self._run_command("wifi.clear")
+            if await self.is_bettercap_running():
+                await self._run_command("wifi.recon off")
+                await self._run_command("wifi.clear")
             self._is_capturing = False
             logger.info("Stopped capture")
         except aiohttp.ClientError as e:
             logger.warning(f"Error stopping capture: {e}")
             self._is_capturing = False
+
+        if stop_bettercap:
+            await self.stop_bettercap()
 
     # ========================================
     # Target Discovery
