@@ -16,6 +16,8 @@ from typing import Any, Dict, Optional
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.kali_tools import KaliToolManager
+from core.pentest_db import PentestDB, Scope, Severity, ScanType
+from core.recon import ReconEngine
 
 
 class KaliMCPServer:
@@ -30,6 +32,8 @@ class KaliMCPServer:
             optional_tools=self.pentest_config.get("optional_tools"),
             enabled_profiles=self.pentest_config.get("enabled_profiles"),
         )
+        self.pentest_db = PentestDB()
+        self.recon_engine = ReconEngine()
 
     def handle_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Handle one MCP JSON-RPC request."""
@@ -155,6 +159,99 @@ class KaliMCPServer:
                     "required": ["session_id", "command"],
                 },
             },
+            # New target/scan/vuln management tools
+            {
+                "name": "pentest_targets_list",
+                "description": "List all targets in the pentest database.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "scope": {"type": "string", "description": "Filter by scope: in_scope, out_of_scope, unknown"},
+                    },
+                },
+            },
+            {
+                "name": "pentest_target_add",
+                "description": "Add a target to the pentest database.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "ip": {"type": "string", "description": "IP address or hostname"},
+                        "hostname": {"type": "string", "description": "Optional hostname"},
+                        "scope": {"type": "string", "description": "Scope: in_scope (default), out_of_scope, unknown"},
+                        "notes": {"type": "string", "description": "Optional notes"},
+                    },
+                    "required": ["ip"],
+                },
+            },
+            {
+                "name": "pentest_target_remove",
+                "description": "Remove a target from the pentest database.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_id": {"type": "number", "description": "Target ID to remove"},
+                    },
+                    "required": ["target_id"],
+                },
+            },
+            {
+                "name": "pentest_scans_list",
+                "description": "List scan history from the database.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_id": {"type": "number", "description": "Filter by target ID"},
+                        "scan_type": {"type": "string", "description": "Filter by type: nmap, nikto, recon, ports"},
+                        "limit": {"type": "number", "description": "Max results (default 25)"},
+                    },
+                },
+            },
+            {
+                "name": "pentest_scan_details",
+                "description": "Get detailed results for a specific scan.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "scan_id": {"type": "number", "description": "Scan ID to retrieve"},
+                    },
+                    "required": ["scan_id"],
+                },
+            },
+            {
+                "name": "pentest_vulns_list",
+                "description": "List discovered vulnerabilities.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_id": {"type": "number", "description": "Filter by target ID"},
+                        "severity": {"type": "string", "description": "Filter by severity: critical, high, medium, low, info"},
+                        "limit": {"type": "number", "description": "Max results (default 50)"},
+                    },
+                },
+            },
+            {
+                "name": "pentest_dns_enum",
+                "description": "Perform DNS enumeration on a domain.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "domain": {"type": "string", "description": "Domain to enumerate"},
+                    },
+                    "required": ["domain"],
+                },
+            },
+            {
+                "name": "pentest_report_generate",
+                "description": "Generate a pentest report.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_ids": {"type": "array", "items": {"type": "number"}, "description": "Target IDs to include (empty for all in-scope)"},
+                        "format": {"type": "string", "description": "Output format: markdown (default) or html"},
+                    },
+                },
+            },
         ]
         return {"jsonrpc": "2.0", "id": request_id, "result": {"tools": tools}}
 
@@ -180,6 +277,22 @@ class KaliMCPServer:
             result = self._tool_sessions_list()
         elif tool_name == "pentest_session_interact":
             result = self._tool_session_interact(arguments)
+        elif tool_name == "pentest_targets_list":
+            result = self._tool_targets_list(arguments)
+        elif tool_name == "pentest_target_add":
+            result = self._tool_target_add(arguments)
+        elif tool_name == "pentest_target_remove":
+            result = self._tool_target_remove(arguments)
+        elif tool_name == "pentest_scans_list":
+            result = self._tool_scans_list(arguments)
+        elif tool_name == "pentest_scan_details":
+            result = self._tool_scan_details(arguments)
+        elif tool_name == "pentest_vulns_list":
+            result = self._tool_vulns_list(arguments)
+        elif tool_name == "pentest_dns_enum":
+            result = self._tool_dns_enum(arguments)
+        elif tool_name == "pentest_report_generate":
+            result = self._tool_report_generate(arguments)
         else:
             return self._error(request_id, f"Unknown tool: {tool_name}")
 
@@ -269,6 +382,189 @@ class KaliMCPServer:
                 command=str(args["command"]),
             )
         )
+
+    # New target/scan/vuln management tools
+
+    def _tool_targets_list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        scope_str = args.get("scope")
+        scope = None
+        if scope_str:
+            try:
+                scope = Scope(scope_str)
+            except ValueError:
+                return {"success": False, "error": f"Invalid scope: {scope_str}"}
+
+        targets = self.pentest_db.list_targets(scope=scope)
+        return {
+            "success": True,
+            "targets": [t.to_dict() for t in targets],
+            "count": len(targets),
+        }
+
+    def _tool_target_add(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        ip = args.get("ip")
+        if not ip:
+            return {"success": False, "error": "ip is required"}
+
+        # Check if exists
+        existing = self.pentest_db.get_target_by_ip(ip)
+        if existing:
+            return {
+                "success": False,
+                "error": f"Target already exists with ID {existing.id}",
+                "target": existing.to_dict(),
+            }
+
+        scope_str = args.get("scope", "in_scope")
+        try:
+            scope = Scope(scope_str)
+        except ValueError:
+            scope = Scope.IN_SCOPE
+
+        target = self.pentest_db.add_target(
+            ip=ip,
+            hostname=args.get("hostname"),
+            scope=scope,
+            notes=args.get("notes", ""),
+        )
+        return {"success": True, "target": target.to_dict()}
+
+    def _tool_target_remove(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        target_id = args.get("target_id")
+        if target_id is None:
+            return {"success": False, "error": "target_id is required"}
+
+        target = self.pentest_db.get_target(int(target_id))
+        if not target:
+            return {"success": False, "error": f"Target not found: {target_id}"}
+
+        self.pentest_db.remove_target(int(target_id))
+        return {"success": True, "removed": target.to_dict()}
+
+    def _tool_scans_list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        target_id = args.get("target_id")
+        scan_type_str = args.get("scan_type")
+        limit = args.get("limit", 25)
+
+        scan_type = None
+        if scan_type_str:
+            try:
+                scan_type = ScanType(scan_type_str)
+            except ValueError:
+                return {"success": False, "error": f"Invalid scan_type: {scan_type_str}"}
+
+        scans = self.pentest_db.get_scans(
+            target_id=int(target_id) if target_id else None,
+            scan_type=scan_type,
+            limit=int(limit),
+        )
+        return {
+            "success": True,
+            "scans": [s.to_dict() for s in scans],
+            "count": len(scans),
+        }
+
+    def _tool_scan_details(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        scan_id = args.get("scan_id")
+        if scan_id is None:
+            return {"success": False, "error": "scan_id is required"}
+
+        scan = self.pentest_db.get_scan(int(scan_id))
+        if not scan:
+            return {"success": False, "error": f"Scan not found: {scan_id}"}
+
+        # Also get vulnerabilities for this scan
+        vulns = self.pentest_db.get_vulns(target_id=scan.target_id, limit=100)
+        scan_vulns = [v for v in vulns if v.scan_id == scan.id]
+
+        return {
+            "success": True,
+            "scan": scan.to_dict(),
+            "vulnerabilities": [v.to_dict() for v in scan_vulns],
+        }
+
+    def _tool_vulns_list(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        target_id = args.get("target_id")
+        severity_str = args.get("severity")
+        limit = args.get("limit", 50)
+
+        severity = None
+        if severity_str:
+            try:
+                severity = Severity(severity_str)
+            except ValueError:
+                return {"success": False, "error": f"Invalid severity: {severity_str}"}
+
+        vulns = self.pentest_db.get_vulns(
+            target_id=int(target_id) if target_id else None,
+            severity=severity,
+            limit=int(limit),
+        )
+        counts = self.pentest_db.get_vuln_counts(
+            target_id=int(target_id) if target_id else None
+        )
+
+        return {
+            "success": True,
+            "vulnerabilities": [v.to_dict() for v in vulns],
+            "counts": counts,
+            "total": len(vulns),
+        }
+
+    def _tool_dns_enum(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        domain = args.get("domain")
+        if not domain:
+            return {"success": False, "error": "domain is required"}
+
+        result = self._run_async(self.recon_engine.full_recon(domain))
+        return {
+            "success": True,
+            "target": domain,
+            "recon": result.to_dict(),
+        }
+
+    def _tool_report_generate(self, args: Dict[str, Any]) -> Dict[str, Any]:
+        target_ids = args.get("target_ids", [])
+        report_format = args.get("format", "markdown")
+
+        if not target_ids:
+            # Use all in-scope targets
+            targets = self.pentest_db.list_targets(scope=Scope.IN_SCOPE)
+            target_ids = [t.id for t in targets]
+
+        if not target_ids:
+            return {"success": False, "error": "No targets for report"}
+
+        try:
+            from core.report_generator import ReportGenerator
+            from pathlib import Path
+            from datetime import datetime
+
+            generator = ReportGenerator(self.pentest_db)
+            report = generator.generate(target_ids=target_ids, format=report_format)
+
+            reports_dir = Path("~/.inkling/reports").expanduser()
+            reports_dir.mkdir(parents=True, exist_ok=True)
+
+            ext = "md" if report_format == "markdown" else "html"
+            filename = f"pentest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+            report_path = reports_dir / filename
+
+            with open(report_path, "w") as f:
+                f.write(report)
+
+            stats = self.pentest_db.get_stats()
+            return {
+                "success": True,
+                "report_path": str(report_path),
+                "targets": len(target_ids),
+                "scans": stats["scans"],
+                "vulnerabilities": stats["vulnerabilities"],
+            }
+        except ImportError:
+            return {"success": False, "error": "Jinja2 not installed"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     @staticmethod
     def _run_async(coro):

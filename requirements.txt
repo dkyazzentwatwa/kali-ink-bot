@@ -42,10 +42,13 @@ feedparser>=6.0.10
 # spidev>=3.6  # Uncomment on Raspberry Pi
 # RPi.GPIO>=0.7.1  # Uncomment on Raspberry Pi
 
-# Crypto & Trading
-TA-Lib>=0.4.28
-ccxt>=4.2.0
-pycoingecko>=3.1.0
+# Pentesting Tools (Pi Zero 2W optimized)
+python-nmap>=0.7.1         # Nmap wrapper (lightweight)
+dnspython>=2.4.0           # DNS enumeration
+python-whois>=0.8.0        # WHOIS lookups
+paramiko>=3.3.0            # SSH client for remote ops
+netaddr>=0.9.0             # IP/network calculations
+Jinja2>=3.1.0              # Report templating
 
 # Development
 pytest>=7.4.0

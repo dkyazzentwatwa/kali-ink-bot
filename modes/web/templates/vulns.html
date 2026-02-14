@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Vulnerabilities - {{name}}</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f0;
+            --text: #1a1a1a;
+            --border: #333;
+            --muted: #666;
+            --accent: #4a90d9;
+        }
+        /* Pastel Color Themes */
+        [data-theme="cream"] { --bg: #f5f5f0; --text: #1a1a1a; --border: #333; --muted: #666; --accent: #4a90d9; }
+        [data-theme="pink"] { --bg: #ffe4e9; --text: #4a1a28; --border: #d4758f; --muted: #8f5066; --accent: #ff6b9d; }
+        [data-theme="mint"] { --bg: #e0f5f0; --text: #1a3a33; --border: #6eb5a3; --muted: #4d8073; --accent: #52d9a6; }
+        [data-theme="lavender"] { --bg: #f0e9ff; --text: #2a1a4a; --border: #9d85d4; --muted: #6b5a8f; --accent: #a78bfa; }
+        [data-theme="peach"] { --bg: #ffe9dc; --text: #4a2a1a; --border: #d49675; --muted: #8f6650; --accent: #ffab7a; }
+        [data-theme="sky"] { --bg: #e0f0ff; --text: #1a2e4a; --border: #6ba3d4; --muted: #4d708f; --accent: #5eb3ff; }
+        [data-theme="butter"] { --bg: #fff9e0; --text: #4a3f1a; --border: #d4c175; --muted: #8f8350; --accent: #ffd952; }
+        [data-theme="rose"] { --bg: #fff0f3; --text: #4a1a2a; --border: #d47590; --muted: #8f5068; --accent: #ff9eb8; }
+        [data-theme="sage"] { --bg: #e8f5e8; --text: #1a3a1a; --border: #75a375; --muted: #507050; --accent: #6dbf6d; }
+        [data-theme="periwinkle"] { --bg: #e8e8ff; --text: #1a1a4a; --border: #7575d4; --muted: #505068; --accent: #8c8cff; }
+        [data-theme="dark"] { --bg: #1a1a1a; --text: #e5e5e5; --border: #444; --muted: #888; --accent: #6ab0f3; }
+        [data-theme="midnight"] { --bg: #0d1117; --text: #c9d1d9; --border: #30363d; --muted: #8b949e; --accent: #58a6ff; }
+        [data-theme="charcoal"] { --bg: #2b2b2b; --text: #e8e6e3; --border: #555; --muted: #999; --accent: #ffa657; }
+        [data-theme="ocean"] { --bg: #e0f2f7; --text: #0d3b47; --border: #4a9fb0; --muted: #2d6d7a; --accent: #00bcd4; }
+        [data-theme="sunset"] { --bg: #ffe8d9; --text: #4a2818; --border: #d47942; --muted: #8f5a35; --accent: #ff6f3c; }
+        [data-theme="forest"] { --bg: #e8f5e9; --text: #1b5e20; --border: #66bb6a; --muted: #388e3c; --accent: #4caf50; }
+        [data-theme="noir"] { --bg: #f8f9fa; --text: #000; --border: #000; --muted: #495057; --accent: #000; }
+        [data-theme="retro"] { --bg: #0d1b0d; --text: #33ff33; --border: #33ff33; --muted: #1a9919; --accent: #66ff66; }
+        html { transition: background-color 0.5s ease, color 0.5s ease; }
+        * { transition: border-color 0.3s ease, background-color 0.3s ease; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .status-line {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        h1 { font-size: 1.8rem; margin: 0; }
+
+        .nav {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+        }
+
+        .nav a:hover, .nav a.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Severity Summary */
+        .severity-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .severity-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .severity-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .severity-card.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent);
+        }
+
+        .severity-card .count {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .severity-card .label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .severity-card.critical .count { color: #dc3545; }
+        .severity-card.high .count { color: #fd7e14; }
+        .severity-card.medium .count { color: #ffc107; }
+        .severity-card.low .count { color: #17a2b8; }
+        .severity-card.info .count { color: #6c757d; }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filters select,
+        .filters input {
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.9rem;
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .action-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* Vuln List */
+        .vuln-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .vuln-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            border-left: 4px solid var(--muted);
+        }
+
+        .vuln-card.critical { border-left-color: #dc3545; }
+        .vuln-card.high { border-left-color: #fd7e14; }
+        .vuln-card.medium { border-left-color: #ffc107; }
+        .vuln-card.low { border-left-color: #17a2b8; }
+        .vuln-card.info { border-left-color: #6c757d; }
+
+        .vuln-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 0.5rem;
+        }
+
+        .vuln-title {
+            font-weight: bold;
+            font-size: 1rem;
+        }
+
+        .vuln-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--muted);
+            flex-wrap: wrap;
+        }
+
+        .vuln-description {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .badge.critical { background: #dc3545; color: white; }
+        .badge.high { background: #fd7e14; color: white; }
+        .badge.medium { background: #ffc107; color: #333; }
+        .badge.low { background: #17a2b8; color: white; }
+        .badge.info { background: #6c757d; color: white; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 700px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        .detail-row {
+            margin-bottom: 0.75rem;
+        }
+
+        .detail-label {
+            font-weight: bold;
+            margin-right: 0.5rem;
+        }
+
+        pre.evidence {
+            background: rgba(0,0,0,0.1);
+            padding: 1rem;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            white-space: pre-wrap;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .severity-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+            .vuln-header {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body x-data="vulnsApp()">
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>{{name}} - Vulnerabilities</h1>
+                <div class="status-line">{{status}}</div>
+            </div>
+            <nav class="nav">
+                <a href="/">Chat</a>
+                <a href="/tasks">Tasks</a>
+                <a href="/scans">Scans</a>
+                <a href="/vulns" class="active">Vulns</a>
+                <a href="/files">Files</a>
+                <a href="/settings">Settings</a>
+            </nav>
+        </header>
+
+        <!-- Severity Summary -->
+        <div class="severity-grid">
+            <div class="severity-card critical"
+                 :class="{ active: severityFilter === 'critical' }"
+                 @click="toggleSeverity('critical')">
+                <div class="count" x-text="counts.critical || 0">0</div>
+                <div class="label">Critical</div>
+            </div>
+            <div class="severity-card high"
+                 :class="{ active: severityFilter === 'high' }"
+                 @click="toggleSeverity('high')">
+                <div class="count" x-text="counts.high || 0">0</div>
+                <div class="label">High</div>
+            </div>
+            <div class="severity-card medium"
+                 :class="{ active: severityFilter === 'medium' }"
+                 @click="toggleSeverity('medium')">
+                <div class="count" x-text="counts.medium || 0">0</div>
+                <div class="label">Medium</div>
+            </div>
+            <div class="severity-card low"
+                 :class="{ active: severityFilter === 'low' }"
+                 @click="toggleSeverity('low')">
+                <div class="count" x-text="counts.low || 0">0</div>
+                <div class="label">Low</div>
+            </div>
+            <div class="severity-card info"
+                 :class="{ active: severityFilter === 'info' }"
+                 @click="toggleSeverity('info')">
+                <div class="count" x-text="counts.info || 0">0</div>
+                <div class="label">Info</div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters">
+            <select x-model="targetFilter" @change="fetchVulns()">
+                <option value="">All Targets</option>
+                <template x-for="t in targets" :key="t.id">
+                    <option :value="t.id" x-text="t.ip"></option>
+                </template>
+            </select>
+            <input type="text" x-model="searchQuery" placeholder="Search..." @input="filterVulns()">
+            <button class="action-btn" @click="clearFilters()">Clear Filters</button>
+            <button class="action-btn" @click="exportCSV()">Export CSV</button>
+        </div>
+
+        <!-- Vulnerability List -->
+        <template x-if="filteredVulns.length === 0">
+            <div class="empty-state">
+                <p x-show="vulns.length === 0">No vulnerabilities found. Run scans to discover vulnerabilities.</p>
+                <p x-show="vulns.length > 0">No vulnerabilities match your filters.</p>
+            </div>
+        </template>
+
+        <div class="vuln-list">
+            <template x-for="v in filteredVulns" :key="v.id">
+                <div class="vuln-card" :class="v.severity" @click="showDetail(v)">
+                    <div class="vuln-header">
+                        <span class="vuln-title" x-text="v.title"></span>
+                        <span class="badge" :class="v.severity" x-text="v.severity.toUpperCase()"></span>
+                    </div>
+                    <div class="vuln-meta">
+                        <span x-text="'Target: ' + getTargetIP(v.target_id)"></span>
+                        <span x-show="v.port" x-text="'Port: ' + v.port"></span>
+                        <span x-show="v.cve" x-text="v.cve"></span>
+                        <span x-show="v.cvss" x-text="'CVSS: ' + v.cvss"></span>
+                    </div>
+                    <div class="vuln-description" x-show="v.description" x-text="v.description.substring(0, 200) + (v.description.length > 200 ? '...' : '')"></div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Vuln Detail Modal -->
+    <div class="modal" x-show="selectedVuln" @click.self="selectedVuln = null" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 x-text="selectedVuln?.title"></h3>
+                <button class="modal-close" @click="selectedVuln = null">&times;</button>
+            </div>
+            <template x-if="selectedVuln">
+                <div>
+                    <div class="detail-row">
+                        <span class="detail-label">Severity:</span>
+                        <span class="badge" :class="selectedVuln.severity" x-text="selectedVuln.severity.toUpperCase()"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="detail-label">Target:</span>
+                        <span x-text="getTargetIP(selectedVuln.target_id)"></span>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.port">
+                        <span class="detail-label">Port:</span>
+                        <span x-text="selectedVuln.port"></span>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.service">
+                        <span class="detail-label">Service:</span>
+                        <span x-text="selectedVuln.service"></span>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.cve">
+                        <span class="detail-label">CVE:</span>
+                        <span x-text="selectedVuln.cve"></span>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.cvss">
+                        <span class="detail-label">CVSS:</span>
+                        <span x-text="selectedVuln.cvss"></span>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.description">
+                        <span class="detail-label">Description:</span>
+                        <p x-text="selectedVuln.description" style="margin-top: 0.5rem;"></p>
+                    </div>
+                    <div class="detail-row" x-show="selectedVuln.evidence">
+                        <span class="detail-label">Evidence:</span>
+                        <pre class="evidence" x-text="selectedVuln.evidence"></pre>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+        // Apply saved theme
+        const savedTheme = localStorage.getItem('inklingTheme') || 'cream';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        function vulnsApp() {
+            return {
+                vulns: [],
+                filteredVulns: [],
+                counts: {},
+                targets: [],
+                targetMap: {},
+                severityFilter: '',
+                targetFilter: '',
+                searchQuery: '',
+                selectedVuln: null,
+
+                async init() {
+                    await this.fetchTargets();
+                    await this.fetchVulns();
+                },
+
+                async fetchTargets() {
+                    try {
+                        const resp = await fetch('/api/pentest/targets');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.targets = data.targets || [];
+                            this.targetMap = {};
+                            this.targets.forEach(t => this.targetMap[t.id] = t.ip);
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch targets:', err);
+                    }
+                },
+
+                async fetchVulns() {
+                    try {
+                        let url = '/api/pentest/vulns?limit=200';
+                        if (this.targetFilter) {
+                            url += `&target_id=${this.targetFilter}`;
+                        }
+                        if (this.severityFilter) {
+                            url += `&severity=${this.severityFilter}`;
+                        }
+
+                        const resp = await fetch(url);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.vulns = data.vulnerabilities || [];
+                            this.counts = data.counts || {};
+                            this.filterVulns();
+                        }
+                    } catch (err) {
+                        console.error('Failed to fetch vulns:', err);
+                    }
+                },
+
+                filterVulns() {
+                    let filtered = [...this.vulns];
+
+                    if (this.searchQuery) {
+                        const query = this.searchQuery.toLowerCase();
+                        filtered = filtered.filter(v =>
+                            v.title.toLowerCase().includes(query) ||
+                            (v.description && v.description.toLowerCase().includes(query)) ||
+                            (v.cve && v.cve.toLowerCase().includes(query))
+                        );
+                    }
+
+                    this.filteredVulns = filtered;
+                },
+
+                toggleSeverity(severity) {
+                    if (this.severityFilter === severity) {
+                        this.severityFilter = '';
+                    } else {
+                        this.severityFilter = severity;
+                    }
+                    this.fetchVulns();
+                },
+
+                clearFilters() {
+                    this.severityFilter = '';
+                    this.targetFilter = '';
+                    this.searchQuery = '';
+                    this.fetchVulns();
+                },
+
+                getTargetIP(targetId) {
+                    return this.targetMap[targetId] || `[${targetId}]`;
+                },
+
+                showDetail(vuln) {
+                    this.selectedVuln = vuln;
+                },
+
+                exportCSV() {
+                    const headers = ['ID', 'Severity', 'Title', 'Target', 'Port', 'CVE', 'CVSS', 'Description'];
+                    const rows = this.filteredVulns.map(v => [
+                        v.id,
+                        v.severity,
+                        `"${v.title.replace(/"/g, '""')}"`,
+                        this.getTargetIP(v.target_id),
+                        v.port || '',
+                        v.cve || '',
+                        v.cvss || '',
+                        `"${(v.description || '').replace(/"/g, '""')}"`
+                    ]);
+
+                    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'vulnerabilities.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                }
+            };
+        }
+    </script>
+</body>
+</html>

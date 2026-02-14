@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Scans - {{name}}</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f0;
+            --text: #1a1a1a;
+            --border: #333;
+            --muted: #666;
+            --accent: #4a90d9;
+        }
+        /* Pastel Color Themes */
+        [data-theme="cream"] { --bg: #f5f5f0; --text: #1a1a1a; --border: #333; --muted: #666; --accent: #4a90d9; }
+        [data-theme="pink"] { --bg: #ffe4e9; --text: #4a1a28; --border: #d4758f; --muted: #8f5066; --accent: #ff6b9d; }
+        [data-theme="mint"] { --bg: #e0f5f0; --text: #1a3a33; --border: #6eb5a3; --muted: #4d8073; --accent: #52d9a6; }
+        [data-theme="lavender"] { --bg: #f0e9ff; --text: #2a1a4a; --border: #9d85d4; --muted: #6b5a8f; --accent: #a78bfa; }
+        [data-theme="peach"] { --bg: #ffe9dc; --text: #4a2a1a; --border: #d49675; --muted: #8f6650; --accent: #ffab7a; }
+        [data-theme="sky"] { --bg: #e0f0ff; --text: #1a2e4a; --border: #6ba3d4; --muted: #4d708f; --accent: #5eb3ff; }
+        [data-theme="butter"] { --bg: #fff9e0; --text: #4a3f1a; --border: #d4c175; --muted: #8f8350; --accent: #ffd952; }
+        [data-theme="rose"] { --bg: #fff0f3; --text: #4a1a2a; --border: #d47590; --muted: #8f5068; --accent: #ff9eb8; }
+        [data-theme="sage"] { --bg: #e8f5e8; --text: #1a3a1a; --border: #75a375; --muted: #507050; --accent: #6dbf6d; }
+        [data-theme="periwinkle"] { --bg: #e8e8ff; --text: #1a1a4a; --border: #7575d4; --muted: #505068; --accent: #8c8cff; }
+        [data-theme="dark"] { --bg: #1a1a1a; --text: #e5e5e5; --border: #444; --muted: #888; --accent: #6ab0f3; }
+        [data-theme="midnight"] { --bg: #0d1117; --text: #c9d1d9; --border: #30363d; --muted: #8b949e; --accent: #58a6ff; }
+        [data-theme="charcoal"] { --bg: #2b2b2b; --text: #e8e6e3; --border: #555; --muted: #999; --accent: #ffa657; }
+        [data-theme="ocean"] { --bg: #e0f2f7; --text: #0d3b47; --border: #4a9fb0; --muted: #2d6d7a; --accent: #00bcd4; }
+        [data-theme="sunset"] { --bg: #ffe8d9; --text: #4a2818; --border: #d47942; --muted: #8f5a35; --accent: #ff6f3c; }
+        [data-theme="forest"] { --bg: #e8f5e9; --text: #1b5e20; --border: #66bb6a; --muted: #388e3c; --accent: #4caf50; }
+        [data-theme="noir"] { --bg: #f8f9fa; --text: #000; --border: #000; --muted: #495057; --accent: #000; }
+        [data-theme="retro"] { --bg: #0d1b0d; --text: #33ff33; --border: #33ff33; --muted: #1a9919; --accent: #66ff66; }
+        html { transition: background-color 0.5s ease, color 0.5s ease; }
+        * { transition: border-color 0.3s ease, background-color 0.3s ease; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .status-line,
+        .thought-line {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            margin: 0;
+        }
+
+        .nav {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+        }
+
+        .nav a:hover, .nav a.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.5rem;
+        }
+
+        .stat-card h3 {
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .stat-card .value {
+            font-size: 2.5rem;
+            font-weight: bold;
+        }
+
+        .stat-card .meta {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .action-btn {
+            padding: 0.75rem 1.5rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .action-btn:hover {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .action-btn.primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        /* Target Input */
+        .scan-form {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .scan-form input {
+            flex: 1;
+            min-width: 200px;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 1rem;
+        }
+
+        .scan-form select {
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 1rem;
+        }
+
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .data-table th {
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+        }
+
+        .data-table tr:hover {
+            background: rgba(0,0,0,0.05);
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .badge.in-scope { background: #4caf50; color: white; }
+        .badge.out-scope { background: #9e9e9e; color: white; }
+        .badge.nmap { background: #2196f3; color: white; }
+        .badge.nikto { background: #9c27b0; color: white; }
+        .badge.recon { background: #ff9800; color: white; }
+        .badge.ports { background: #607d8b; color: white; }
+
+        /* Sections */
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .section h2 {
+            font-size: 1.4rem;
+        }
+
+        /* Loading/Empty States */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--muted);
+        }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            .data-table {
+                font-size: 0.85rem;
+            }
+            .data-table th,
+            .data-table td {
+                padding: 0.5rem;
+            }
+        }
+    </style>
+</head>
+<body x-data="scansApp()">
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>{{name}} - Scans</h1>
+                <div class="status-line">{{status}}</div>
+            </div>
+            <nav class="nav">
+                <a href="/">Chat</a>
+                <a href="/tasks">Tasks</a>
+                <a href="/scans" class="active">Scans</a>
+                <a href="/vulns">Vulns</a>
+                <a href="/files">Files</a>
+                <a href="/settings">Settings</a>
+            </nav>
+        </header>
+
+        <!-- Dashboard Stats -->
+        <div class="dashboard-grid">
+            <div class="stat-card">
+                <h3>Targets</h3>
+                <div class="value" x-text="stats.targets">-</div>
+                <div class="meta" x-text="stats.targets_in_scope + ' in scope'">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Scans</h3>
+                <div class="value" x-text="stats.scans">-</div>
+                <div class="meta">Total scans run</div>
+            </div>
+            <div class="stat-card">
+                <h3>Vulnerabilities</h3>
+                <div class="value" x-text="stats.vulnerabilities">-</div>
+                <div class="meta" x-text="(stats.vulns_by_severity?.critical || 0) + ' critical, ' + (stats.vulns_by_severity?.high || 0) + ' high'">-</div>
+            </div>
+        </div>
+
+        <!-- Quick Scan Form -->
+        <div class="section">
+            <h2>Quick Scan</h2>
+            <div class="scan-form">
+                <input type="text" x-model="scanTarget" placeholder="Target IP or hostname" @keyup.enter="runScan()">
+                <select x-model="scanType">
+                    <option value="quick">Quick (Nmap)</option>
+                    <option value="full">Full Port Scan</option>
+                    <option value="version">Version Detection</option>
+                    <option value="vuln">Vulnerability Scan</option>
+                    <option value="ports">Quick TCP Ports</option>
+                    <option value="web">Web Scan (Nikto)</option>
+                    <option value="recon">Recon (DNS/WHOIS)</option>
+                </select>
+                <button class="action-btn primary" @click="runScan()" :disabled="scanning">
+                    <span x-show="!scanning">Scan</span>
+                    <span x-show="scanning">Scanning...</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-actions">
+            <button class="action-btn" @click="showAddTarget = true">+ Add Target</button>
+            <button class="action-btn" @click="generateReport()">Generate Report</button>
+            <button class="action-btn" @click="refreshData()">Refresh</button>
+        </div>
+
+        <!-- Targets Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Targets (<span x-text="targets.length">0</span>)</h2>
+            </div>
+            <template x-if="targets.length === 0">
+                <div class="empty-state">
+                    <p>No targets yet. Add a target or run a scan to get started.</p>
+                </div>
+            </template>
+            <template x-if="targets.length > 0">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>IP/Host</th>
+                            <th>Hostname</th>
+                            <th>Scope</th>
+                            <th>Notes</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="t in targets" :key="t.id">
+                            <tr>
+                                <td x-text="t.id"></td>
+                                <td x-text="t.ip"></td>
+                                <td x-text="t.hostname || '-'"></td>
+                                <td>
+                                    <span class="badge" :class="t.scope === 'in_scope' ? 'in-scope' : 'out-scope'" x-text="t.scope"></span>
+                                </td>
+                                <td x-text="(t.notes || '-').substring(0, 30)"></td>
+                                <td>
+                                    <button class="action-btn" @click="quickScan(t.ip)">Scan</button>
+                                    <button class="action-btn" @click="removeTarget(t.id)">Remove</button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+
+        <!-- Scan History Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Recent Scans</h2>
+            </div>
+            <template x-if="scans.length === 0">
+                <div class="empty-state">
+                    <p>No scans yet. Run a scan to see results here.</p>
+                </div>
+            </template>
+            <template x-if="scans.length > 0">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Target</th>
+                            <th>Ports</th>
+                            <th>Vulns</th>
+                            <th>Duration</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="s in scans" :key="s.id">
+                            <tr @click="viewScan(s.id)" style="cursor:pointer">
+                                <td x-text="s.id"></td>
+                                <td>
+                                    <span class="badge" :class="s.scan_type.toLowerCase()" x-text="s.scan_type"></span>
+                                </td>
+                                <td x-text="getTargetIP(s.target_id)"></td>
+                                <td x-text="s.ports_found"></td>
+                                <td x-text="s.vulns_found"></td>
+                                <td x-text="s.duration_sec ? s.duration_sec.toFixed(1) + 's' : '-'"></td>
+                                <td x-text="formatDate(s.timestamp)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </template>
+        </div>
+    </div>
+
+    <!-- Add Target Modal -->
+    <div class="modal" x-show="showAddTarget" @click.self="showAddTarget = false" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Target</h3>
+                <button class="modal-close" @click="showAddTarget = false">&times;</button>
+            </div>
+            <div class="scan-form" style="flex-direction: column;">
+                <input type="text" x-model="newTarget.ip" placeholder="IP address or hostname">
+                <input type="text" x-model="newTarget.hostname" placeholder="Hostname (optional)">
+                <input type="text" x-model="newTarget.notes" placeholder="Notes (optional)">
+                <button class="action-btn primary" @click="addTarget()">Add Target</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scan Details Modal -->
+    <div class="modal" x-show="selectedScan" @click.self="selectedScan = null" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Scan Details #<span x-text="selectedScan?.id"></span></h3>
+                <button class="modal-close" @click="selectedScan = null">&times;</button>
+            </div>
+            <template x-if="selectedScan">
+                <div>
+                    <p><strong>Type:</strong> <span x-text="selectedScan.scan_type"></span></p>
+                    <p><strong>Target:</strong> <span x-text="getTargetIP(selectedScan.target_id)"></span></p>
+                    <p><strong>Ports Found:</strong> <span x-text="selectedScan.ports_found"></span></p>
+                    <p><strong>Vulns Found:</strong> <span x-text="selectedScan.vulns_found"></span></p>
+                    <template x-if="selectedScan.result">
+                        <div style="margin-top: 1rem;">
+                            <h4>Results</h4>
+                            <pre style="background: rgba(0,0,0,0.1); padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 0.85rem;" x-text="JSON.stringify(selectedScan.result, null, 2)"></pre>
+                        </div>
+                    </template>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <script>
+        // Apply saved theme
+        const savedTheme = localStorage.getItem('inklingTheme') || 'cream';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        function scansApp() {
+            return {
+                stats: {},
+                targets: [],
+                scans: [],
+                scanTarget: '',
+                scanType: 'quick',
+                scanning: false,
+                showAddTarget: false,
+                selectedScan: null,
+                newTarget: { ip: '', hostname: '', notes: '' },
+                targetMap: {},
+
+                async init() {
+                    await this.refreshData();
+                },
+
+                async refreshData() {
+                    try {
+                        // Fetch stats
+                        const statsResp = await fetch('/api/pentest/stats');
+                        if (statsResp.ok) {
+                            this.stats = await statsResp.json();
+                        }
+
+                        // Fetch targets
+                        const targetsResp = await fetch('/api/pentest/targets');
+                        if (targetsResp.ok) {
+                            const data = await targetsResp.json();
+                            this.targets = data.targets || [];
+                            // Build target map for lookup
+                            this.targetMap = {};
+                            this.targets.forEach(t => this.targetMap[t.id] = t.ip);
+                        }
+
+                        // Fetch scans
+                        const scansResp = await fetch('/api/pentest/scans?limit=25');
+                        if (scansResp.ok) {
+                            const data = await scansResp.json();
+                            this.scans = data.scans || [];
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh data:', err);
+                    }
+                },
+
+                getTargetIP(targetId) {
+                    return this.targetMap[targetId] || `[${targetId}]`;
+                },
+
+                formatDate(timestamp) {
+                    const d = new Date(timestamp * 1000);
+                    return d.toLocaleString();
+                },
+
+                async runScan() {
+                    if (!this.scanTarget.trim()) return;
+
+                    this.scanning = true;
+                    try {
+                        let cmd = '';
+                        if (this.scanType === 'web') {
+                            cmd = `/web-scan ${this.scanTarget}`;
+                        } else if (this.scanType === 'recon') {
+                            cmd = `/recon ${this.scanTarget}`;
+                        } else if (this.scanType === 'ports') {
+                            cmd = `/ports ${this.scanTarget}`;
+                        } else {
+                            cmd = `/scan ${this.scanTarget} ${this.scanType}`;
+                        }
+
+                        const resp = await fetch('/api/command', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command: cmd })
+                        });
+
+                        if (resp.ok) {
+                            const result = await resp.json();
+                            alert(result.response || 'Scan complete');
+                            this.scanTarget = '';
+                            await this.refreshData();
+                        }
+                    } catch (err) {
+                        alert('Scan failed: ' + err.message);
+                    } finally {
+                        this.scanning = false;
+                    }
+                },
+
+                quickScan(ip) {
+                    this.scanTarget = ip;
+                    this.scanType = 'quick';
+                },
+
+                async addTarget() {
+                    if (!this.newTarget.ip.trim()) return;
+
+                    try {
+                        const resp = await fetch('/api/pentest/targets', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.newTarget)
+                        });
+
+                        if (resp.ok) {
+                            this.showAddTarget = false;
+                            this.newTarget = { ip: '', hostname: '', notes: '' };
+                            await this.refreshData();
+                        } else {
+                            const err = await resp.json();
+                            alert(err.error || 'Failed to add target');
+                        }
+                    } catch (err) {
+                        alert('Failed to add target: ' + err.message);
+                    }
+                },
+
+                async removeTarget(id) {
+                    if (!confirm('Remove this target?')) return;
+
+                    try {
+                        const resp = await fetch(`/api/pentest/targets/${id}`, { method: 'DELETE' });
+                        if (resp.ok) {
+                            await this.refreshData();
+                        }
+                    } catch (err) {
+                        alert('Failed to remove target: ' + err.message);
+                    }
+                },
+
+                async viewScan(id) {
+                    try {
+                        const resp = await fetch(`/api/pentest/scans/${id}`);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.selectedScan = data.scan;
+                        }
+                    } catch (err) {
+                        console.error('Failed to load scan:', err);
+                    }
+                },
+
+                async generateReport() {
+                    try {
+                        const resp = await fetch('/api/command', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ command: '/report' })
+                        });
+
+                        if (resp.ok) {
+                            const result = await resp.json();
+                            alert(result.response || 'Report generated');
+                        }
+                    } catch (err) {
+                        alert('Failed to generate report: ' + err.message);
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>

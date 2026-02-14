@@ -39,6 +39,16 @@ COMMANDS: List[Command] = [
     Command("bash", "Run a shell command", "cmd_bash", "system"),
     Command("tools", "Show Kali tool install status", "cmd_tools", "system"),
 
+    # Pentest commands
+    Command("scan", "Run nmap network scan on target", "cmd_scan", "pentest"),
+    Command("web-scan", "Run nikto web vulnerability scan", "cmd_web_scan", "pentest"),
+    Command("recon", "DNS/WHOIS enumeration on target", "cmd_recon", "pentest"),
+    Command("ports", "Quick TCP port scan", "cmd_ports", "pentest"),
+    Command("targets", "Manage target list", "cmd_targets", "pentest"),
+    Command("vulns", "View discovered vulnerabilities", "cmd_vulns", "pentest"),
+    Command("scans", "View scan history", "cmd_scans", "pentest"),
+    Command("report", "Generate pentest report", "cmd_report", "pentest"),
+
     # Display commands
     Command("face", "Test a face expression", "cmd_face", "display"),
     Command("faces", "List all available faces", "cmd_faces", "display"),

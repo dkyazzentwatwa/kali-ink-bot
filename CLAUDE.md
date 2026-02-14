@@ -4,31 +4,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Branch: `claude/crypto-watcher-bot-nbxGO` - Crypto Watcher Variant**
+**Kali Ink Bot - AI-Powered Penetration Testing Assistant**
 
-This is a specialized variant of Project Inkling transformed into a **crypto watcher bot** with technical analysis capabilities. It combines:
-- **Cryptocurrency price tracking** via ccxt (Binance primary) + CoinGecko fallback
-- **Technical analysis** using TA-lib (RSI, MACD, Bollinger Bands, patterns, support/resistance)
-- **Portfolio management** with real-time valuation
-- **Price alerts** with automated checking
-- **Crypto bro AI personality** with slang (gm, wagmi, ngmi, hodl, diamond hands, etc.)
-- Pwnagotchi-style personality/mood system with **7 crypto-specific moods** (BULLISH, BEARISH, MOON, REKT, HODL, FOMO, DIAMOND_HANDS)
-- Local AI assistant via Anthropic/OpenAI/Gemini/Ollama APIs with automatic fallback
-- **9 MCP tools** for crypto operations (price checks, TA analysis, portfolio tracking, alerts)
-- Scheduler for automated crypto updates (morning briefings, price checks, TA updates)
-- Model Context Protocol (MCP) for tool extensibility
-- Web UI and SSH mode with **8 crypto commands** (/price, /chart, /portfolio, /watch, /add, /remove, /alert, /alerts)
-- E-ink display with **crypto-focused layout** (BTC price in header, portfolio in footer)
-- **No cloud dependencies** - All crypto data fetched from public APIs
+This is an AI-powered security testing companion that combines Kali Linux tools with an intelligent AI assistant. Built for Raspberry Pi Zero 2W with e-ink display, it provides:
+
+- **Kali tool integration** - Nmap, Metasploit, Hydra, Nikto, SQLMap, Aircrack-ng
+- **AI-assisted pentesting** - Claude/GPT/Gemini helps plan and execute security assessments
+- **Profile management** - Optimized tool packages (pi-headless-curated, kali-linux-default)
+- **MCP integration** - 8 pentest tools exposed to AI via Model Context Protocol
+- **E-ink display** - Pwnagotchi-style interface showing scan status and results
+- **Multi-mode interface** - SSH terminal and web UI (http://localhost:8081)
+- **Personality system** - Evolving AI personality with moods and XP progression
+- **Task management** - Track pentest objectives and findings
+- **Scheduler** - Automated scans and system maintenance
+- **No cloud dependencies** - All processing local, tools run on-device
 
 The codebase has one main component:
-- **Pi Client** (Python) - Runs on the device with local AI and crypto tracking
+- **Pi Client** (Python) - Runs on Raspberry Pi with Kali Linux and local AI
 
-**Documentation:**
-- **CRYPTO_BOT.md** - Complete transformation guide (585 lines)
-- **CRYPTO_QUICK_START.md** - 5-minute setup guide (180 lines)
+**Key Commands:**
+- `/tools` - Show installed Kali tools status
+- `/scan <target>` - Run network scan with Nmap
+- `/web-scan <url>` - Scan website with Nikto
+- `/tasks` - Manage pentest objectives
+- `/help` - Show all available commands
 
-**Note**: This is a crypto-focused fork. Original task management features have been replaced with cryptocurrency tracking.
+**Note**: This tool is for **authorized security testing only**. Only use on systems you own or have written permission to test.
 
 ## Commands
 
@@ -54,7 +55,7 @@ INKLING_DEBUG=1 python main.py --mode ssh
 
 # Run tests
 pytest
-pytest -xvs core/test_crypto.py  # Single test file
+pytest -xvs core/test_kali.py  # Single test file
 pytest --cov=core --cov-report=html  # With coverage
 
 # Syntax check (before committing)
@@ -748,39 +749,4 @@ Copy `config.yml` to `config.local.yml` for local overrides. Key settings:
 - WiFi check is non-blocking and fails gracefully
 - Check logs for WiFi utility errors: `INKLING_DEBUG=1 python main.py --mode ssh`
 
-### Crypto Commands (New)
-
-**Quick test crypto functionality:**
-```bash
-# Test price fetching
-python core/test_crypto.py
-
-# SSH mode with crypto commands
-python main.py --mode ssh
-/price BTC
-/chart BTC
-/portfolio
-/watch
-
-# Web mode with crypto commands
-python main.py --mode web
-# Visit http://localhost:8081
-# Use same commands in chat
-```
-
-**Crypto Modules:**
-- `core/crypto_watcher.py` - Price fetching via ccxt/CoinGecko
-- `core/crypto_ta.py` - TA-lib technical analysis
-- `core/test_crypto.py` - Comprehensive test suite
-- `mcp_servers/crypto.py` - MCP server with 9 crypto tools
-
-**Crypto Commands:**
-- `/price <symbol>` - Check cryptocurrency price
-- `/chart <symbol> [timeframe]` - Show TA indicators and patterns
-- `/watch` - Display watchlist with current prices
-- `/portfolio` - Show portfolio value and breakdown
-- `/add <symbol> <amount>` - Add coin to portfolio
-- `/remove <symbol> <amount>` - Remove coin from portfolio
-- `/alert <symbol> <price> <above|below>` - Set price alert
-- `/alerts` - List all active price alerts
 

@@ -30,6 +30,8 @@ from core.crypto import Identity
 from core.memory import MemoryStore
 from core.focus import FocusManager
 from core.kali_tools import KaliToolManager
+from core.pentest_db import PentestDB, Target, ScanRecord, Vulnerability, Scope, Severity, ScanType
+from core.recon import ReconEngine
 
 # Command handlers
 from modes.web.commands.play import PlayCommands
@@ -41,6 +43,7 @@ from modes.web.commands.scheduler import SchedulerCommands
 from modes.web.commands.display import DisplayCommands
 from modes.web.commands.utilities import UtilityCommands
 from modes.web.commands.focus import FocusCommands
+from modes.web.commands.pentest import PentestCommands
 
 
 # Template loading
@@ -69,6 +72,10 @@ LOGIN_TEMPLATE = _load_template("login.html")
 
 
 FILES_TEMPLATE = _load_template("files.html")
+
+SCANS_TEMPLATE = _load_template("scans.html")
+
+VULNS_TEMPLATE = _load_template("vulns.html")
 
 
 class WebChatMode:
@@ -153,6 +160,7 @@ class WebChatMode:
         self._display_cmds = DisplayCommands(self)
         self._utility_cmds = UtilityCommands(self)
         self._focus_cmds = FocusCommands(self)
+        self._pentest_cmds = PentestCommands(self)
 
         self._setup_routes()
 
@@ -1216,6 +1224,329 @@ class WebChatMode:
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
+        # ========================================
+        # Scans & Vulns Pages
+        # ========================================
+
+        @self._app.route("/scans")
+        def scans_page():
+            auth_check = self._require_auth()
+            if auth_check:
+                return auth_check
+            return template(
+                SCANS_TEMPLATE,
+                name=self.personality.name,
+                face=self._get_face_str(),
+                status=self.personality.get_status_line(),
+                thought=self.personality.last_thought or "",
+            )
+
+        @self._app.route("/vulns")
+        def vulns_page():
+            auth_check = self._require_auth()
+            if auth_check:
+                return auth_check
+            return template(
+                VULNS_TEMPLATE,
+                name=self.personality.name,
+                face=self._get_face_str(),
+                status=self.personality.get_status_line(),
+                thought=self.personality.last_thought or "",
+            )
+
+        # ========================================
+        # Pentest API Routes
+        # ========================================
+
+        def get_pentest_db() -> PentestDB:
+            """Get PentestDB instance."""
+            pentest_cfg = self._config.get("pentest", {})
+            data_dir = pentest_cfg.get("data_dir", "~/.inkling/pentest")
+            return PentestDB(data_dir)
+
+        @self._app.route("/api/pentest/stats")
+        def pentest_stats():
+            """Get pentest dashboard stats."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                db = get_pentest_db()
+                targets = db.list_targets()
+                scans = db.get_scans(limit=1000)  # Get all for counting
+                vulns = db.get_vulns(limit=1000)
+
+                # Count vulns by severity
+                vuln_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0}
+                for v in vulns:
+                    sev = v.severity.value if hasattr(v.severity, 'value') else v.severity
+                    if sev in vuln_counts:
+                        vuln_counts[sev] += 1
+
+                return json.dumps({
+                    "success": True,
+                    "stats": {
+                        "targets": len(targets),
+                        "scans": len(scans),
+                        "vulns": len(vulns),
+                        "vuln_counts": vuln_counts,
+                    }
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/targets", method=["GET"])
+        def list_targets():
+            """List all targets."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                db = get_pentest_db()
+                targets = db.list_targets()
+                return json.dumps({
+                    "success": True,
+                    "targets": [
+                        {
+                            "id": t.id,
+                            "ip": t.ip,
+                            "hostname": t.hostname,
+                            "scope": t.scope.value if hasattr(t.scope, 'value') else t.scope,
+                            "notes": t.notes,
+                            "created_at": t.created_at,
+                        }
+                        for t in targets
+                    ]
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/targets", method=["POST"])
+        def add_target():
+            """Add a new target."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                data = request.json or {}
+                ip = data.get("ip", "").strip()
+                if not ip:
+                    return json.dumps({"error": "IP/hostname is required"})
+
+                db = get_pentest_db()
+                scope_str = data.get("scope", "in-scope")
+                try:
+                    scope = Scope(scope_str)
+                except ValueError:
+                    scope = Scope.IN_SCOPE
+
+                target = db.add_target(
+                    ip=ip,
+                    hostname=data.get("hostname"),
+                    scope=scope,
+                    notes=data.get("notes", ""),
+                )
+                return json.dumps({
+                    "success": True,
+                    "target": {
+                        "id": target.id,
+                        "ip": target.ip,
+                        "hostname": target.hostname,
+                        "scope": target.scope.value,
+                        "notes": target.notes,
+                        "created_at": target.created_at,
+                    }
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/targets/<target_id:int>", method=["DELETE"])
+        def delete_target(target_id: int):
+            """Delete a target."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                db = get_pentest_db()
+                deleted = db.remove_target(target_id)
+                if deleted:
+                    return json.dumps({"success": True})
+                else:
+                    response.status = 404
+                    return json.dumps({"error": "Target not found"})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/scans", method=["GET"])
+        def list_scans():
+            """List scan history."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                limit = int(request.query.get("limit", "25"))
+                target_id = request.query.get("target_id")
+                scan_type = request.query.get("type")
+
+                db = get_pentest_db()
+
+                # Filter by target if specified
+                target_filter = int(target_id) if target_id else None
+                type_filter = None
+                if scan_type:
+                    try:
+                        type_filter = ScanType(scan_type)
+                    except ValueError:
+                        pass
+
+                scans = db.get_scans(
+                    target_id=target_filter,
+                    scan_type=type_filter,
+                    limit=limit
+                )
+
+                return json.dumps({
+                    "success": True,
+                    "scans": [
+                        {
+                            "id": s.id,
+                            "target_id": s.target_id,
+                            "scan_type": s.scan_type.value if hasattr(s.scan_type, 'value') else s.scan_type,
+                            "ports_found": s.ports_found,
+                            "vulns_found": s.vulns_found,
+                            "timestamp": s.timestamp,
+                        }
+                        for s in scans
+                    ]
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/scans/<scan_id:int>", method=["GET"])
+        def get_scan_details(scan_id: int):
+            """Get scan details including raw results."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                db = get_pentest_db()
+                scan = db.get_scan_by_id(scan_id)
+                if not scan:
+                    response.status = 404
+                    return json.dumps({"error": "Scan not found"})
+
+                # Parse result JSON
+                result_data = {}
+                if scan.result_json:
+                    try:
+                        result_data = json.loads(scan.result_json)
+                    except json.JSONDecodeError:
+                        result_data = {"raw": scan.result_json}
+
+                return json.dumps({
+                    "success": True,
+                    "scan": {
+                        "id": scan.id,
+                        "target_id": scan.target_id,
+                        "scan_type": scan.scan_type.value if hasattr(scan.scan_type, 'value') else scan.scan_type,
+                        "ports_found": scan.ports_found,
+                        "vulns_found": scan.vulns_found,
+                        "timestamp": scan.timestamp,
+                        "result": result_data,
+                    }
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/vulns", method=["GET"])
+        def list_vulns():
+            """List vulnerabilities."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                limit = int(request.query.get("limit", "200"))
+                severity = request.query.get("severity")
+                target_id = request.query.get("target_id")
+
+                db = get_pentest_db()
+
+                # Filter by severity if specified
+                severity_filter = None
+                if severity:
+                    try:
+                        severity_filter = Severity(severity)
+                    except ValueError:
+                        pass
+
+                # Get vulns with optional filters
+                if target_id:
+                    vulns = db.get_vulns_by_target(int(target_id))
+                else:
+                    vulns = db.get_vulns(severity=severity_filter, limit=limit)
+
+                return json.dumps({
+                    "success": True,
+                    "vulns": [
+                        {
+                            "id": v.id,
+                            "scan_id": v.scan_id,
+                            "target_id": v.target_id,
+                            "severity": v.severity.value if hasattr(v.severity, 'value') else v.severity,
+                            "title": v.title,
+                            "description": v.description,
+                            "cvss": v.cvss,
+                            "cve": v.cve,
+                        }
+                        for v in vulns
+                    ]
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/pentest/scan", method=["POST"])
+        def run_quick_scan():
+            """Run a quick scan on a target."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                data = request.json or {}
+                target = data.get("target", "").strip()
+                scan_type = data.get("type", "nmap")
+
+                if not target:
+                    return json.dumps({"error": "Target is required"})
+
+                # For async scans, we'll queue and return immediately
+                # The actual scan runs via the command handlers
+                result = self._pentest_cmds.scan(target) if scan_type == "nmap" else \
+                         self._pentest_cmds.web_scan(target) if scan_type == "nikto" else \
+                         self._pentest_cmds.ports(target)
+
+                return json.dumps({
+                    "success": not result.get("error", False),
+                    "message": result.get("response", "Scan initiated"),
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
     def _task_to_dict(self, task: Task) -> Dict[str, Any]:
         """Convert Task to JSON-serializable dict."""
         from datetime import datetime
@@ -1560,6 +1891,42 @@ class WebChatMode:
         """Manage focus sessions."""
         return self._focus_cmds.focus(args)
 
+    # ================
+    # Pentest Commands
+    # ================
+
+    def _cmd_scan(self, args: str = "") -> Dict[str, Any]:
+        """Run nmap network scan on target."""
+        return self._pentest_cmds.scan(args)
+
+    def _cmd_web_scan(self, args: str = "") -> Dict[str, Any]:
+        """Run nikto web vulnerability scan."""
+        return self._pentest_cmds.web_scan(args)
+
+    def _cmd_recon(self, args: str = "") -> Dict[str, Any]:
+        """DNS/WHOIS enumeration on target."""
+        return self._pentest_cmds.recon(args)
+
+    def _cmd_ports(self, args: str = "") -> Dict[str, Any]:
+        """Quick TCP port scan."""
+        return self._pentest_cmds.ports(args)
+
+    def _cmd_targets(self, args: str = "") -> Dict[str, Any]:
+        """Manage target list."""
+        return self._pentest_cmds.targets(args)
+
+    def _cmd_vulns(self, args: str = "") -> Dict[str, Any]:
+        """View discovered vulnerabilities."""
+        return self._pentest_cmds.vulns(args)
+
+    def _cmd_scans(self, args: str = "") -> Dict[str, Any]:
+        """View scan history."""
+        return self._pentest_cmds.scans(args)
+
+    def _cmd_report(self, args: str = "") -> Dict[str, Any]:
+        """Generate pentest report."""
+        return self._pentest_cmds.report(args)
+
     def _handle_command_sync(self, command: str) -> Dict[str, Any]:
         """Handle slash commands (sync wrapper)."""
         parts = command.split(maxsplit=1)
@@ -1763,491 +2130,3 @@ class WebChatMode:
     # ========================================
     # Crypto Watcher Commands
     # ========================================
-
-    def _cmd_price(self, args: str = "") -> Dict[str, Any]:
-        """Check cryptocurrency price."""
-        if not args:
-            return {
-                "response": "Usage: /price <symbol>\nExample: /price BTC",
-                "face": "curious",
-                "status": "info"
-            }
-
-        symbol = args.upper().strip()
-
-        try:
-            # Run async function in thread pool
-            import asyncio
-            from core.crypto_watcher import CryptoWatcher
-
-            async def fetch_price():
-                async with CryptoWatcher() as watcher:
-                    return await watcher.get_price(symbol), watcher
-
-            price, watcher = asyncio.run(fetch_price())
-
-            if not price:
-                return {
-                    "response": f"Failed to fetch price for {symbol}",
-                    "face": "sad",
-                    "status": "error"
-                }
-
-            response = f"**{symbol} PRICE**\n\n"
-            response += f"{watcher.format_price(price)}\n"
-            response += f"Volume 24h: ${price.volume_24h:,.0f}\n"
-            if price.market_cap:
-                response += f"Market Cap: ${price.market_cap:,.0f}\n"
-            response += f"Mood: {price.mood}"
-
-            # Set face based on mood
-            face = "excited" if price.is_pumping else "sad" if price.is_dumping else "cool"
-
-            return {
-                "response": response,
-                "face": face,
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "response": f"Error fetching price: {str(e)}",
-                "face": "confused",
-                "status": "error"
-            }
-
-    def _cmd_chart(self, args: str = "") -> Dict[str, Any]:
-        """Show TA indicators for a cryptocurrency."""
-        if not args:
-            return {
-                "response": "Usage: /chart <symbol> [timeframe]\nExample: /chart BTC\nExample: /chart ETH 4h",
-                "face": "curious",
-                "status": "info"
-            }
-
-        parts = args.upper().split()
-        symbol = parts[0]
-        timeframe = parts[1] if len(parts) > 1 else "1h"
-
-        try:
-            import asyncio
-            from core.crypto_watcher import CryptoWatcher
-            from core.crypto_ta import CryptoTA
-
-            async def fetch_chart():
-                async with CryptoWatcher() as watcher:
-                    ohlcv = await watcher.get_ohlcv(symbol, timeframe, 100)
-                    return ohlcv
-
-            ohlcv = asyncio.run(fetch_chart())
-
-            if not ohlcv:
-                return {
-                    "response": f"Failed to fetch chart data for {symbol}",
-                    "face": "sad",
-                    "status": "error"
-                }
-
-            ta = CryptoTA()
-            indicators = ta.calculate_indicators(ohlcv)
-            patterns = ta.detect_patterns(ohlcv)
-            supports, resistances = ta.get_support_resistance(ohlcv)
-
-            signal = indicators.get_signal()
-
-            response = f"**{symbol} TA ({timeframe})**\n\n"
-            response += f"**Signal:** {signal.crypto_bro_text} {signal.emoji}\n\n"
-
-            response += "**Indicators:**\n"
-            if indicators.rsi:
-                rsi_status = "oversold" if indicators.rsi < 30 else "overbought" if indicators.rsi > 70 else "neutral"
-                response += f"• RSI: {indicators.rsi:.1f} ({rsi_status})\n"
-            if indicators.macd:
-                macd_trend = "bullish" if indicators.macd > indicators.macd_signal else "bearish"
-                response += f"• MACD: {macd_trend} ({indicators.macd:.2f})\n"
-            if indicators.sma_20 and indicators.sma_50:
-                trend = "golden cross" if indicators.sma_20 > indicators.sma_50 else "death cross"
-                response += f"• Trend: {trend}\n"
-
-            if patterns:
-                response += "\n**Patterns:**\n"
-                for pattern in patterns[:3]:
-                    response += f"• {pattern}\n"
-
-            if supports and resistances:
-                response += "\n**Levels:**\n"
-                response += f"• Support: {', '.join([f'${s:,.0f}' for s in supports[:3]])}\n"
-                response += f"• Resistance: {', '.join([f'${r:,.0f}' for r in resistances[:3]])}\n"
-
-            face = "excited" if signal.value in ["STRONG_BUY", "BUY"] else "sad" if signal.value in ["STRONG_SELL", "SELL"] else "cool"
-
-            return {
-                "response": response,
-                "face": face,
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "response": f"Error analyzing chart: {str(e)}",
-                "face": "confused",
-                "status": "error"
-            }
-
-    def _cmd_watch(self) -> Dict[str, Any]:
-        """Show watchlist with current prices."""
-        try:
-            import asyncio
-            from core.crypto_watcher import CryptoWatcher
-
-            # Load watchlist from config
-            config = self._config or {}
-            crypto_config = config.get("crypto", {})
-            watchlist = crypto_config.get("watchlist", ["BTC", "ETH", "SOL"])
-
-            async def fetch_watchlist():
-                async with CryptoWatcher() as watcher:
-                    prices = await watcher.get_multiple_prices(watchlist)
-                    return prices, watcher
-
-            prices, watcher = asyncio.run(fetch_watchlist())
-
-            if not prices:
-                return {
-                    "response": "Failed to fetch watchlist prices",
-                    "face": "sad",
-                    "status": "error"
-                }
-
-            response = "**WATCHLIST**\n\n"
-            for symbol in watchlist:
-                if symbol in prices:
-                    price = prices[symbol]
-                    response += f"{watcher.format_price(price)}\n"
-
-            return {
-                "response": response,
-                "face": "cool",
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "response": f"Error fetching watchlist: {str(e)}",
-                "face": "confused",
-                "status": "error"
-            }
-
-    def _cmd_portfolio(self) -> Dict[str, Any]:
-        """Show portfolio value and holdings."""
-        try:
-            import asyncio
-            from core.crypto_watcher import CryptoWatcher
-            from pathlib import Path
-            import json
-
-            portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-            if not portfolio_file.exists():
-                return {
-                    "response": "Portfolio is empty. Use /add to add holdings.\nExample: /add BTC 0.5",
-                    "face": "curious",
-                    "status": "info"
-                }
-
-            with open(portfolio_file) as f:
-                holdings = json.load(f)
-
-            if not holdings:
-                return {
-                    "response": "Portfolio is empty. Use /add to add holdings.",
-                    "face": "curious",
-                    "status": "info"
-                }
-
-            async def fetch_portfolio():
-                async with CryptoWatcher() as watcher:
-                    symbols = list(holdings.keys())
-                    prices = await watcher.get_multiple_prices(symbols)
-                    return prices
-
-            prices = asyncio.run(fetch_portfolio())
-
-            total_value = 0.0
-            response = "**PORTFOLIO** 💎\n\n"
-
-            for symbol, amount in holdings.items():
-                if symbol in prices:
-                    price = prices[symbol]
-                    value = amount * price.price_usd
-                    total_value += value
-
-                    emoji = "🚀" if price.price_change_24h > 5 else "📈" if price.price_change_24h > 0 else "📉" if price.price_change_24h > -5 else "💀"
-                    response += f"**{symbol}:** {amount} × ${price.price_usd:,.2f} = ${value:,.2f} ({price.price_change_24h:+.1f}%) {emoji}\n"
-
-            response += f"\n**Total:** ${total_value:,.2f}"
-
-            return {
-                "response": response,
-                "face": "excited" if total_value > 0 else "cool",
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "response": f"Error loading portfolio: {str(e)}",
-                "face": "confused",
-                "status": "error"
-            }
-
-    def _cmd_add(self, args: str = "") -> Dict[str, Any]:
-        """Add coin to portfolio."""
-        if not args:
-            return {
-                "response": "Usage: /add <symbol> <amount>\nExample: /add BTC 0.5",
-                "face": "curious",
-                "status": "info"
-            }
-
-        parts = args.upper().split()
-        if len(parts) < 2:
-            return {
-                "response": "Please specify both symbol and amount",
-                "face": "confused",
-                "status": "error"
-            }
-
-        symbol = parts[0]
-
-        try:
-            amount = float(parts[1])
-
-            from pathlib import Path
-            import json
-
-            portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-            portfolio_file.parent.mkdir(parents=True, exist_ok=True)
-
-            if portfolio_file.exists():
-                with open(portfolio_file) as f:
-                    holdings = json.load(f)
-            else:
-                holdings = {}
-
-            holdings[symbol] = holdings.get(symbol, 0) + amount
-
-            with open(portfolio_file, 'w') as f:
-                json.dump(holdings, f, indent=2)
-
-            return {
-                "response": f"Added {amount} {symbol} to portfolio (total: {holdings[symbol]})",
-                "face": "excited",
-                "status": "success"
-            }
-
-        except ValueError:
-            return {
-                "response": "Invalid amount. Use a number (e.g., 0.5)",
-                "face": "confused",
-                "status": "error"
-            }
-        except Exception as e:
-            return {
-                "response": f"Error adding to portfolio: {str(e)}",
-                "face": "sad",
-                "status": "error"
-            }
-
-    def _cmd_remove(self, args: str = "") -> Dict[str, Any]:
-        """Remove coin from portfolio."""
-        if not args:
-            return {
-                "response": "Usage: /remove <symbol> <amount>\nExample: /remove BTC 0.1",
-                "face": "curious",
-                "status": "info"
-            }
-
-        parts = args.upper().split()
-        if len(parts) < 2:
-            return {
-                "response": "Please specify both symbol and amount",
-                "face": "confused",
-                "status": "error"
-            }
-
-        symbol = parts[0]
-
-        try:
-            amount = float(parts[1])
-
-            from pathlib import Path
-            import json
-
-            portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-            if not portfolio_file.exists():
-                return {
-                    "response": "Portfolio is empty",
-                    "face": "sad",
-                    "status": "error"
-                }
-
-            with open(portfolio_file) as f:
-                holdings = json.load(f)
-
-            if symbol not in holdings:
-                return {
-                    "response": f"{symbol} not in portfolio",
-                    "face": "confused",
-                    "status": "error"
-                }
-
-            holdings[symbol] = max(0, holdings[symbol] - amount)
-
-            if holdings[symbol] == 0:
-                del holdings[symbol]
-                message = f"Removed all {symbol} from portfolio"
-            else:
-                message = f"Removed {amount} {symbol} (remaining: {holdings[symbol]})"
-
-            with open(portfolio_file, 'w') as f:
-                json.dump(holdings, f, indent=2)
-
-            return {
-                "response": message,
-                "face": "cool",
-                "status": "success"
-            }
-
-        except ValueError:
-            return {
-                "response": "Invalid amount",
-                "face": "confused",
-                "status": "error"
-            }
-        except Exception as e:
-            return {
-                "response": f"Error removing from portfolio: {str(e)}",
-                "face": "sad",
-                "status": "error"
-            }
-
-    def _cmd_alert(self, args: str = "") -> Dict[str, Any]:
-        """Set a price alert."""
-        if not args:
-            return {
-                "response": "Usage: /alert <symbol> <price> <above|below>\nExample: /alert BTC 70000 above",
-                "face": "curious",
-                "status": "info"
-            }
-
-        parts = args.split()
-        if len(parts) < 3:
-            return {
-                "response": "Please specify symbol, price, and condition (above/below)",
-                "face": "confused",
-                "status": "error"
-            }
-
-        symbol = parts[0].upper()
-
-        try:
-            target_price = float(parts[1])
-            condition = parts[2].lower()
-
-            if condition not in ["above", "below"]:
-                return {
-                    "response": "Condition must be 'above' or 'below'",
-                    "face": "confused",
-                    "status": "error"
-                }
-
-            from pathlib import Path
-            import json
-
-            alerts_file = Path.home() / ".inkling" / "crypto_alerts.json"
-            alerts_file.parent.mkdir(parents=True, exist_ok=True)
-
-            if alerts_file.exists():
-                with open(alerts_file) as f:
-                    alerts = json.load(f)
-            else:
-                alerts = []
-
-            alert = {
-                "symbol": symbol,
-                "target_price": target_price,
-                "condition": condition,
-                "active": True
-            }
-
-            alerts.append(alert)
-
-            with open(alerts_file, 'w') as f:
-                json.dump(alerts, f, indent=2)
-
-            return {
-                "response": f"🔔 Alert set: {symbol} {condition} ${target_price:,.0f}",
-                "face": "excited",
-                "status": "success"
-            }
-
-        except ValueError:
-            return {
-                "response": "Invalid price",
-                "face": "confused",
-                "status": "error"
-            }
-        except Exception as e:
-            return {
-                "response": f"Error setting alert: {str(e)}",
-                "face": "sad",
-                "status": "error"
-            }
-
-    def _cmd_alerts(self) -> Dict[str, Any]:
-        """List all active price alerts."""
-        try:
-            from pathlib import Path
-            import json
-
-            alerts_file = Path.home() / ".inkling" / "crypto_alerts.json"
-            if not alerts_file.exists():
-                return {
-                    "response": "No alerts set. Use /alert to create one.",
-                    "face": "curious",
-                    "status": "info"
-                }
-
-            with open(alerts_file) as f:
-                alerts = json.load(f)
-
-            active_alerts = [a for a in alerts if a.get("active", True)]
-
-            if not active_alerts:
-                return {
-                    "response": "No active alerts.",
-                    "face": "curious",
-                    "status": "info"
-                }
-
-            response = "**PRICE ALERTS** 🔔\n\n"
-
-            for alert in active_alerts:
-                symbol = alert["symbol"]
-                price = alert["target_price"]
-                condition = alert["condition"]
-                emoji = "⬆️" if condition == "above" else "⬇️"
-
-                response += f"{emoji} {symbol} {condition} ${price:,.0f}\n"
-
-            return {
-                "response": response,
-                "face": "cool",
-                "status": "success"
-            }
-
-        except Exception as e:
-            return {
-                "response": f"Error loading alerts: {str(e)}",
-                "face": "confused",
-                "status": "error"
-            }

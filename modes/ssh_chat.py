@@ -22,6 +22,8 @@ from core.focus import FocusManager
 from core.progression import XPSource
 from core.shell_utils import run_bash_command
 from core.kali_tools import KaliToolManager
+from core.pentest_db import PentestDB, Target, ScanRecord, Vulnerability, Scope, Severity, ScanType
+from core.recon import ReconEngine
 
 
 class Colors:
@@ -1940,374 +1942,678 @@ class SSHChatMode:
             print()
 
     # ========================================
-    # Crypto Watcher Commands
+    # Pentest Commands
     # ========================================
 
-    async def cmd_price(self, args: str = "") -> None:
-        """Check cryptocurrency price."""
-        if not args:
-            print(f"{Colors.INFO}Usage: /price <symbol>{Colors.RESET}")
-            print("  Example: /price BTC")
+    def _get_pentest_db(self) -> PentestDB:
+        """Get or create pentest database instance."""
+        if not hasattr(self, '_pentest_db'):
+            self._pentest_db = PentestDB()
+        return self._pentest_db
+
+    def _get_kali_manager(self) -> KaliToolManager:
+        """Get or create Kali tool manager instance."""
+        if not hasattr(self, '_kali_manager'):
+            pentest_cfg = self._config.get("pentest", {})
+            self._kali_manager = KaliToolManager(
+                data_dir=pentest_cfg.get("data_dir", "~/.inkling/pentest"),
+                package_profile=pentest_cfg.get("package_profile", "pi-headless-curated"),
+                required_tools=pentest_cfg.get("required_tools"),
+                optional_tools=pentest_cfg.get("optional_tools"),
+                enabled_profiles=pentest_cfg.get("enabled_profiles"),
+            )
+        return self._kali_manager
+
+    def _get_recon_engine(self) -> ReconEngine:
+        """Get or create recon engine instance."""
+        if not hasattr(self, '_recon_engine'):
+            self._recon_engine = ReconEngine()
+        return self._recon_engine
+
+    async def cmd_scan(self, args: str = "") -> None:
+        """Run nmap network scan on target."""
+        if not args.strip():
+            print(f"{Colors.INFO}Usage: /scan <target> [scan_type]{Colors.RESET}")
+            print("  target: IP, hostname, or CIDR range")
+            print("  scan_type: quick (default), full, stealth, version, vuln")
+            print(f"\n{Colors.DIM}Example: /scan 192.168.1.1{Colors.RESET}")
+            print(f"{Colors.DIM}Example: /scan example.com version{Colors.RESET}")
             return
 
-        symbol = args.upper().strip()
+        parts = args.strip().split()
+        target = parts[0]
+        scan_type = parts[1] if len(parts) > 1 else "quick"
 
-        try:
-            from core.crypto_watcher import CryptoWatcher
+        manager = self._get_kali_manager()
+        db = self._get_pentest_db()
 
-            async with CryptoWatcher() as watcher:
-                price = await watcher.get_price(symbol)
-
-                if not price:
-                    print(f"{Colors.ERROR}Failed to fetch price for {symbol}{Colors.RESET}")
-                    return
-
-                # Format with color based on change
-                if price.price_change_24h > 0:
-                    change_color = Colors.SUCCESS
-                else:
-                    change_color = Colors.ERROR
-
-                print(f"\n{Colors.HEADER}═══ {symbol} PRICE ═══{Colors.RESET}\n")
-                print(f"  {watcher.format_price(price)}")
-                print(f"  Volume 24h: ${price.volume_24h:,.0f}")
-                if price.market_cap:
-                    print(f"  Market Cap: ${price.market_cap:,.0f}")
-                print(f"  Mood: {price.mood} {'🚀' if price.is_pumping else '💀' if price.is_dumping else '📊'}")
-                print()
-
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
-
-    async def cmd_chart(self, args: str = "") -> None:
-        """Show TA indicators for a cryptocurrency."""
-        if not args:
-            print(f"{Colors.INFO}Usage: /chart <symbol> [timeframe]{Colors.RESET}")
-            print("  Example: /chart BTC")
-            print("  Example: /chart ETH 4h")
+        # Check if nmap is installed
+        if not manager.is_tool_installed("nmap"):
+            print(f"{Colors.ERROR}nmap is not installed.{Colors.RESET}")
+            print(f"Install with: {manager.get_tools_status()['install_guidance']['pi_baseline']}")
             return
 
-        parts = args.upper().split()
-        symbol = parts[0]
-        timeframe = parts[1] if len(parts) > 1 else "1h"
+        # Get or create target
+        target_obj = db.get_target_by_ip(target)
+        if not target_obj:
+            target_obj = db.add_target(ip=target, scope=Scope.IN_SCOPE)
+            print(f"{Colors.INFO}Added target to database: {target}{Colors.RESET}")
 
-        try:
-            from core.crypto_watcher import CryptoWatcher
-            from core.crypto_ta import CryptoTA
+        print(f"\n{Colors.HEADER}Scanning {target} ({scan_type})...{Colors.RESET}")
+        print(f"{Colors.DIM}This may take a few minutes.{Colors.RESET}\n")
 
-            print(f"\n{Colors.INFO}Fetching chart data for {symbol}...{Colors.RESET}")
+        # Update display
+        await self.display.update(
+            face="intense",
+            text=f"Scanning {target}...",
+            mood_text="Hunting",
+        )
 
-            async with CryptoWatcher() as watcher:
-                ohlcv = await watcher.get_ohlcv(symbol, timeframe, 100)
+        import time
+        start_time = time.time()
 
-                if not ohlcv:
-                    print(f"{Colors.ERROR}Failed to fetch chart data for {symbol}{Colors.RESET}")
-                    return
+        # Run scan
+        result = await manager.nmap_scan(
+            target=target,
+            scan_type=scan_type,
+            timing=3,  # T3 for Pi (not T4)
+        )
 
-                ta = CryptoTA()
-                indicators = ta.calculate_indicators(ohlcv)
-                patterns = ta.detect_patterns(ohlcv)
-                supports, resistances = ta.get_support_resistance(ohlcv)
+        duration = time.time() - start_time
 
-                signal = indicators.get_signal()
+        if not result:
+            print(f"{Colors.ERROR}Scan failed. Check target and network.{Colors.RESET}")
+            await self.display.update(
+                face="sad",
+                text="Scan failed",
+                mood_text="Frustrated",
+            )
+            return
 
-                print(f"\n{Colors.HEADER}═══ {symbol} TA ({timeframe}) ═══{Colors.RESET}\n")
-                print(f"  {Colors.BOLD}Signal: {signal.crypto_bro_text} {signal.emoji}{Colors.RESET}\n")
+        # Save scan to database
+        scan_record = db.save_scan(
+            target_id=target_obj.id,
+            scan_type=ScanType.NMAP,
+            result=result.__dict__,
+            ports_found=len(result.open_ports),
+            vulns_found=len(result.vulnerabilities),
+            duration_sec=duration,
+        )
 
-                print(f"  {Colors.BOLD}Indicators:{Colors.RESET}")
-                if indicators.rsi:
-                    rsi_status = "oversold" if indicators.rsi < 30 else "overbought" if indicators.rsi > 70 else "neutral"
-                    print(f"    RSI: {indicators.rsi:.1f} ({rsi_status})")
-                if indicators.macd:
-                    macd_trend = "bullish" if indicators.macd > indicators.macd_signal else "bearish"
-                    print(f"    MACD: {macd_trend} ({indicators.macd:.2f})")
-                if indicators.sma_20 and indicators.sma_50:
-                    trend = "golden cross" if indicators.sma_20 > indicators.sma_50 else "death cross"
-                    print(f"    Trend: {trend}")
-                if indicators.atr:
-                    print(f"    ATR: {indicators.atr:.2f} (volatility)")
+        # Save any vulnerabilities found
+        if result.vulnerabilities:
+            vuln_dicts = []
+            for v in result.vulnerabilities:
+                vuln_dicts.append({
+                    "title": v.get("description", "Unknown Vulnerability")[:100],
+                    "description": v.get("description", ""),
+                    "severity": v.get("severity", "info"),
+                })
+            db.save_vulnerabilities(scan_record.id, target_obj.id, vuln_dicts)
 
-                if patterns:
-                    print(f"\n  {Colors.BOLD}Patterns:{Colors.RESET}")
-                    for pattern in patterns:
-                        print(f"    {pattern}")
+        # Display results
+        print(f"{Colors.HEADER}═══ SCAN RESULTS ═══{Colors.RESET}\n")
+        print(f"Target: {result.target}")
+        print(f"Hosts up: {result.hosts_up}/{result.total_hosts}")
+        print(f"Time: {duration:.1f}s")
 
-                if supports and resistances:
-                    print(f"\n  {Colors.BOLD}Levels:{Colors.RESET}")
-                    print(f"    Support: {', '.join([f'${s:,.0f}' for s in supports[:3]])}")
-                    print(f"    Resistance: {', '.join([f'${r:,.0f}' for r in resistances[:3]])}")
+        if result.open_ports:
+            print(f"\n{Colors.BOLD}Open Ports ({len(result.open_ports)}):{Colors.RESET}")
+            for port in result.open_ports[:20]:
+                version = f" ({port['version']})" if port.get('version') else ""
+                print(f"  {port['port']:5}/{port['protocol']:3} {port['service']}{version}")
+            if len(result.open_ports) > 20:
+                print(f"  ... and {len(result.open_ports) - 20} more")
 
-                print()
+        if result.vulnerabilities:
+            print(f"\n{Colors.ERROR}Vulnerabilities ({len(result.vulnerabilities)}):{Colors.RESET}")
+            for vuln in result.vulnerabilities[:10]:
+                print(f"  - {vuln.get('description', 'Unknown')[:60]}")
 
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
+        print(f"\n{Colors.SUCCESS}Scan saved to database (ID: {scan_record.id}){Colors.RESET}")
 
-    async def cmd_watch(self) -> None:
-        """Show watchlist with current prices."""
-        try:
-            from core.crypto_watcher import CryptoWatcher
+        await self.display.update(
+            face="excited",
+            text=f"Found {len(result.open_ports)} ports",
+            mood_text="Hunting",
+        )
 
-            # Load watchlist from config or MCP storage
-            config = self.config or {}
-            crypto_config = config.get("crypto", {})
-            watchlist = crypto_config.get("watchlist", ["BTC", "ETH", "SOL"])
+    async def cmd_web_scan(self, args: str = "") -> None:
+        """Run nikto web vulnerability scan."""
+        if not args.strip():
+            print(f"{Colors.INFO}Usage: /web-scan <url|host> [port]{Colors.RESET}")
+            print("  url: Target URL or hostname")
+            print("  port: Port number (default: 80)")
+            print(f"\n{Colors.DIM}Example: /web-scan example.com{Colors.RESET}")
+            print(f"{Colors.DIM}Example: /web-scan 192.168.1.1 443{Colors.RESET}")
+            return
 
-            print(f"\n{Colors.HEADER}═══ WATCHLIST ═══{Colors.RESET}\n")
-            print(f"{Colors.INFO}Fetching prices...{Colors.RESET}\n")
+        parts = args.strip().split()
+        target = parts[0]
+        port = int(parts[1]) if len(parts) > 1 else 80
+        ssl = port == 443
 
-            async with CryptoWatcher() as watcher:
-                prices = await watcher.get_multiple_prices(watchlist)
+        # Remove protocol if included
+        if target.startswith("http://"):
+            target = target[7:]
+            ssl = False
+        elif target.startswith("https://"):
+            target = target[8:]
+            ssl = True
 
-                if not prices:
-                    print(f"{Colors.ERROR}Failed to fetch prices{Colors.RESET}")
-                    return
+        # Remove trailing path
+        target = target.split("/")[0]
 
-                for symbol in watchlist:
-                    if symbol in prices:
-                        price = prices[symbol]
-                        print(f"  {watcher.format_price(price)}")
+        manager = self._get_kali_manager()
+        db = self._get_pentest_db()
 
-                print()
+        # Check if nikto is installed
+        if not manager.is_tool_installed("nikto"):
+            print(f"{Colors.ERROR}nikto is not installed.{Colors.RESET}")
+            print(f"Install with: {manager.get_tools_status()['install_guidance']['pi_baseline']}")
+            return
 
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
+        # Get or create target
+        target_obj = db.get_target_by_ip(target)
+        if not target_obj:
+            target_obj = db.add_target(ip=target, scope=Scope.IN_SCOPE)
 
-    async def cmd_portfolio(self) -> None:
-        """Show portfolio value and holdings."""
-        try:
-            from core.crypto_watcher import CryptoWatcher
-            from pathlib import Path
-            import json
+        proto = "https" if ssl else "http"
+        print(f"\n{Colors.HEADER}Web scanning {proto}://{target}:{port}...{Colors.RESET}")
+        print(f"{Colors.DIM}This may take several minutes.{Colors.RESET}\n")
 
-            # Load portfolio from storage
-            portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-            if not portfolio_file.exists():
-                print(f"\n{Colors.INFO}Portfolio is empty. Use /add to add holdings.{Colors.RESET}")
-                print(f"  Example: /add BTC 0.5")
-                print()
+        await self.display.update(
+            face="intense",
+            text=f"Web scanning {target}...",
+            mood_text="Hunting",
+        )
+
+        import time
+        start_time = time.time()
+
+        # Run nikto scan
+        result = await manager.nikto_scan(
+            target=target,
+            port=port,
+            ssl=ssl,
+        )
+
+        duration = time.time() - start_time
+
+        if "error" in result:
+            print(f"{Colors.ERROR}Web scan failed: {result['error']}{Colors.RESET}")
+            await self.display.update(
+                face="sad",
+                text="Web scan failed",
+                mood_text="Frustrated",
+            )
+            return
+
+        # Save scan to database
+        findings = result.get("findings", [])
+        scan_record = db.save_scan(
+            target_id=target_obj.id,
+            scan_type=ScanType.NIKTO,
+            result=result,
+            ports_found=1,  # Nikto scans single port
+            vulns_found=len(findings),
+            duration_sec=duration,
+        )
+
+        # Save findings as vulnerabilities
+        if findings:
+            vuln_dicts = []
+            for finding in findings:
+                # Parse OSVDB/CVE from finding
+                severity = Severity.MEDIUM
+                if "OSVDB-0" in finding:
+                    severity = Severity.INFO
+                elif "CVE-" in finding or "critical" in finding.lower():
+                    severity = Severity.HIGH
+
+                vuln_dicts.append({
+                    "title": finding[:100],
+                    "description": finding,
+                    "severity": severity.value,
+                    "port": port,
+                    "service": "http" if not ssl else "https",
+                })
+            db.save_vulnerabilities(scan_record.id, target_obj.id, vuln_dicts)
+
+        # Display results
+        print(f"{Colors.HEADER}═══ WEB SCAN RESULTS ═══{Colors.RESET}\n")
+        print(f"Target: {result.get('target', target)}")
+        print(f"Findings: {result.get('total_findings', len(findings))}")
+        print(f"Time: {duration:.1f}s")
+
+        if findings:
+            print(f"\n{Colors.BOLD}Findings:{Colors.RESET}")
+            for finding in findings[:15]:
+                print(f"  {finding[:80]}")
+            if len(findings) > 15:
+                print(f"  ... and {len(findings) - 15} more")
+
+        print(f"\n{Colors.SUCCESS}Scan saved to database (ID: {scan_record.id}){Colors.RESET}")
+
+        await self.display.update(
+            face="excited",
+            text=f"Found {len(findings)} issues",
+            mood_text="Alert",
+        )
+
+    async def cmd_recon(self, args: str = "") -> None:
+        """DNS/WHOIS enumeration on target."""
+        if not args.strip():
+            print(f"{Colors.INFO}Usage: /recon <domain|ip>{Colors.RESET}")
+            print("  Performs DNS enumeration, WHOIS lookup, and subdomain discovery")
+            print(f"\n{Colors.DIM}Example: /recon example.com{Colors.RESET}")
+            return
+
+        target = args.strip().split()[0]
+        db = self._get_pentest_db()
+        recon = self._get_recon_engine()
+
+        # Get or create target
+        target_obj = db.get_target_by_ip(target)
+        if not target_obj:
+            target_obj = db.add_target(ip=target, scope=Scope.IN_SCOPE)
+
+        print(f"\n{Colors.HEADER}Reconnaissance on {target}...{Colors.RESET}\n")
+
+        await self.display.update(
+            face="curious",
+            text=f"Recon on {target}...",
+            mood_text="Curious",
+        )
+
+        import time
+        start_time = time.time()
+
+        # Run full recon
+        result = await recon.full_recon(target)
+
+        duration = time.time() - start_time
+
+        # Save to database
+        scan_record = db.save_scan(
+            target_id=target_obj.id,
+            scan_type=ScanType.RECON,
+            result=result.to_dict(),
+            ports_found=0,
+            vulns_found=0,
+            duration_sec=duration,
+        )
+
+        # Display results
+        print(f"{Colors.HEADER}═══ RECON RESULTS ═══{Colors.RESET}\n")
+        print(f"Target: {target}")
+        print(f"Time: {duration:.1f}s")
+
+        if result.dns_records:
+            print(f"\n{Colors.BOLD}DNS Records:{Colors.RESET}")
+            print(ReconEngine.format_dns_summary(result.dns_records))
+
+        if result.whois:
+            print(f"\n{Colors.BOLD}WHOIS:{Colors.RESET}")
+            print(ReconEngine.format_whois_summary(result.whois))
+
+        if result.subdomains:
+            print(f"\n{Colors.BOLD}Subdomains ({len(result.subdomains)}):{Colors.RESET}")
+            for sub in result.subdomains[:10]:
+                print(f"  {sub}")
+            if len(result.subdomains) > 10:
+                print(f"  ... and {len(result.subdomains) - 10} more")
+
+        if result.reverse_dns:
+            print(f"\n{Colors.BOLD}Reverse DNS:{Colors.RESET} {result.reverse_dns}")
+
+        if result.zone_transfer_possible:
+            print(f"\n{Colors.ERROR}Zone transfer POSSIBLE (security issue!){Colors.RESET}")
+
+        if result.errors:
+            print(f"\n{Colors.DIM}Warnings: {', '.join(result.errors)}{Colors.RESET}")
+
+        print(f"\n{Colors.SUCCESS}Recon saved to database (ID: {scan_record.id}){Colors.RESET}")
+
+        await self.display.update(
+            face="happy",
+            text=f"Recon complete",
+            mood_text="Curious",
+        )
+
+    async def cmd_ports(self, args: str = "") -> None:
+        """Quick TCP port scan."""
+        if not args.strip():
+            print(f"{Colors.INFO}Usage: /ports <target> [port,port,...]{Colors.RESET}")
+            print("  Quick TCP connect scan (no nmap required)")
+            print(f"\n{Colors.DIM}Example: /ports 192.168.1.1{Colors.RESET}")
+            print(f"{Colors.DIM}Example: /ports example.com 22,80,443{Colors.RESET}")
+            return
+
+        parts = args.strip().split()
+        target = parts[0]
+        ports = None
+
+        if len(parts) > 1:
+            try:
+                ports = [int(p.strip()) for p in parts[1].split(",")]
+            except ValueError:
+                print(f"{Colors.ERROR}Invalid port format. Use comma-separated numbers.{Colors.RESET}")
                 return
 
-            with open(portfolio_file) as f:
-                holdings = json.load(f)
+        db = self._get_pentest_db()
+        recon = self._get_recon_engine()
 
-            if not holdings:
-                print(f"\n{Colors.INFO}Portfolio is empty. Use /add to add holdings.{Colors.RESET}")
+        # Get or create target
+        target_obj = db.get_target_by_ip(target)
+        if not target_obj:
+            target_obj = db.add_target(ip=target, scope=Scope.IN_SCOPE)
+
+        print(f"\n{Colors.HEADER}Port scanning {target}...{Colors.RESET}\n")
+
+        await self.display.update(
+            face="intense",
+            text=f"Scanning ports on {target}...",
+            mood_text="Hunting",
+        )
+
+        import time
+        start_time = time.time()
+
+        # Run quick port scan
+        results = await recon.quick_port_scan(target, ports=ports)
+
+        duration = time.time() - start_time
+
+        open_ports = [p for p, is_open in results if is_open]
+
+        # Save to database
+        scan_record = db.save_scan(
+            target_id=target_obj.id,
+            scan_type=ScanType.PORTS,
+            result={"open_ports": open_ports, "target": target},
+            ports_found=len(open_ports),
+            vulns_found=0,
+            duration_sec=duration,
+        )
+
+        # Display results
+        print(f"{Colors.HEADER}═══ PORT SCAN RESULTS ═══{Colors.RESET}\n")
+        print(f"Target: {target}")
+        print(f"Time: {duration:.1f}s")
+
+        if open_ports:
+            print(f"\n{Colors.BOLD}Open Ports ({len(open_ports)}):{Colors.RESET}")
+            for port in open_ports:
+                print(f"  {port}/tcp OPEN")
+        else:
+            print(f"\n{Colors.DIM}No open ports found{Colors.RESET}")
+
+        print(f"\n{Colors.SUCCESS}Scan saved to database (ID: {scan_record.id}){Colors.RESET}")
+
+        await self.display.update(
+            face="happy" if open_ports else "curious",
+            text=f"{len(open_ports)} ports open",
+            mood_text="Hunting",
+        )
+
+    async def cmd_targets(self, args: str = "") -> None:
+        """Manage target list."""
+        db = self._get_pentest_db()
+        parts = args.strip().split() if args.strip() else []
+
+        if not parts or parts[0] == "list":
+            # List targets
+            targets = db.list_targets()
+
+            if not targets:
+                print(f"\n{Colors.INFO}No targets in database.{Colors.RESET}")
+                print("Use '/targets add <ip> [hostname]' to add a target.")
                 return
 
-            print(f"\n{Colors.HEADER}═══ PORTFOLIO ═══{Colors.RESET}\n")
-            print(f"{Colors.INFO}Calculating value...{Colors.RESET}\n")
+            print(f"\n{Colors.HEADER}═══ TARGETS ({len(targets)}) ═══{Colors.RESET}\n")
 
-            async with CryptoWatcher() as watcher:
-                symbols = list(holdings.keys())
-                prices = await watcher.get_multiple_prices(symbols)
+            for t in targets:
+                scope_color = Colors.SUCCESS if t.scope == Scope.IN_SCOPE else Colors.DIM
+                scope_icon = "●" if t.scope == Scope.IN_SCOPE else "○"
+                hostname = f" ({t.hostname})" if t.hostname else ""
+                print(f"  {scope_color}{scope_icon}{Colors.RESET} [{t.id}] {t.ip}{hostname}")
+                if t.notes:
+                    print(f"      {Colors.DIM}{t.notes[:50]}{Colors.RESET}")
 
-                total_value = 0.0
-
-                for symbol, amount in holdings.items():
-                    if symbol in prices:
-                        price = prices[symbol]
-                        value = amount * price.price_usd
-                        total_value += value
-
-                        change_color = Colors.SUCCESS if price.price_change_24h > 0 else Colors.ERROR
-                        emoji = "🚀" if price.price_change_24h > 5 else "📈" if price.price_change_24h > 0 else "📉" if price.price_change_24h > -5 else "💀"
-
-                        print(f"  {symbol}: {amount} × ${price.price_usd:,.2f} = {change_color}${value:,.2f}{Colors.RESET} ({price.price_change_24h:+.1f}%) {emoji}")
-
-                print(f"\n  {Colors.BOLD}💎 Total: ${total_value:,.2f}{Colors.RESET}")
-                print()
-
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
-
-    async def cmd_add(self, args: str = "") -> None:
-        """Add coin to watchlist or portfolio."""
-        if not args:
-            print(f"{Colors.INFO}Usage:{Colors.RESET}")
-            print("  /add <symbol>         - Add to watchlist")
-            print("  /add <symbol> <amount> - Add to portfolio")
-            print("  Example: /add DOGE")
-            print("  Example: /add BTC 0.5")
             return
 
-        parts = args.upper().split()
-        symbol = parts[0]
+        subcmd = parts[0].lower()
 
-        try:
-            from pathlib import Path
-            import json
+        if subcmd == "add":
+            if len(parts) < 2:
+                print(f"{Colors.ERROR}Usage: /targets add <ip> [hostname]{Colors.RESET}")
+                return
 
-            if len(parts) == 1:
-                # Add to watchlist
-                config = self.config or {}
-                crypto_config = config.get("crypto", {})
-                watchlist = crypto_config.get("watchlist", [])
+            ip = parts[1]
+            hostname = parts[2] if len(parts) > 2 else None
 
-                if symbol in watchlist:
-                    print(f"{Colors.INFO}{symbol} already in watchlist{Colors.RESET}")
-                    return
+            # Check if already exists
+            existing = db.get_target_by_ip(ip)
+            if existing:
+                print(f"{Colors.INFO}Target already exists: ID {existing.id}{Colors.RESET}")
+                return
 
-                print(f"{Colors.INFO}Note: Add {symbol} to config.yml watchlist for persistence{Colors.RESET}")
-                print(f"{Colors.SUCCESS}Would add {symbol} to watchlist{Colors.RESET}")
+            target = db.add_target(ip=ip, hostname=hostname, scope=Scope.IN_SCOPE)
+            print(f"{Colors.SUCCESS}Target added: ID {target.id}{Colors.RESET}")
 
+        elif subcmd == "remove" or subcmd == "rm":
+            if len(parts) < 2:
+                print(f"{Colors.ERROR}Usage: /targets remove <id|ip>{Colors.RESET}")
+                return
+
+            identifier = parts[1]
+
+            # Try to find by ID or IP
+            try:
+                target_id = int(identifier)
+                target = db.get_target(target_id)
+            except ValueError:
+                target = db.get_target_by_ip(identifier)
+                target_id = target.id if target else None
+
+            if not target:
+                print(f"{Colors.ERROR}Target not found: {identifier}{Colors.RESET}")
+                return
+
+            db.remove_target(target_id)
+            print(f"{Colors.SUCCESS}Target removed: {target.ip}{Colors.RESET}")
+
+        elif subcmd == "scope":
+            if len(parts) < 3:
+                print(f"{Colors.ERROR}Usage: /targets scope <id|ip> <in|out>{Colors.RESET}")
+                return
+
+            identifier = parts[1]
+            scope_str = parts[2].lower()
+
+            scope = Scope.IN_SCOPE if scope_str in ["in", "in_scope", "inscope"] else Scope.OUT_OF_SCOPE
+
+            # Find target
+            try:
+                target_id = int(identifier)
+            except ValueError:
+                target = db.get_target_by_ip(identifier)
+                target_id = target.id if target else None
+
+            if not target_id:
+                print(f"{Colors.ERROR}Target not found: {identifier}{Colors.RESET}")
+                return
+
+            db.update_target(target_id, scope=scope)
+            print(f"{Colors.SUCCESS}Target scope updated to: {scope.value}{Colors.RESET}")
+
+        else:
+            print(f"{Colors.INFO}Usage: /targets [list|add|remove|scope]{Colors.RESET}")
+            print("  list              - List all targets")
+            print("  add <ip> [host]   - Add a target")
+            print("  remove <id|ip>    - Remove a target")
+            print("  scope <id> <in|out> - Set target scope")
+
+    async def cmd_vulns(self, args: str = "") -> None:
+        """View discovered vulnerabilities."""
+        db = self._get_pentest_db()
+        parts = args.strip().split() if args.strip() else []
+
+        # Parse filters
+        target_id = None
+        severity_filter = None
+
+        for part in parts:
+            if part.lower() in ["critical", "high", "medium", "low", "info"]:
+                severity_filter = Severity(part.lower())
             else:
-                # Add to portfolio
-                amount = float(parts[1])
+                try:
+                    target_id = int(part)
+                except ValueError:
+                    target = db.get_target_by_ip(part)
+                    target_id = target.id if target else None
 
-                portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-                portfolio_file.parent.mkdir(parents=True, exist_ok=True)
+        vulns = db.get_vulns(target_id=target_id, severity=severity_filter)
+        counts = db.get_vuln_counts(target_id=target_id)
 
-                if portfolio_file.exists():
-                    with open(portfolio_file) as f:
-                        holdings = json.load(f)
-                else:
-                    holdings = {}
-
-                holdings[symbol] = holdings.get(symbol, 0) + amount
-
-                with open(portfolio_file, 'w') as f:
-                    json.dump(holdings, f, indent=2)
-
-                print(f"{Colors.SUCCESS}Added {amount} {symbol} to portfolio (total: {holdings[symbol]}){Colors.RESET}")
-
-        except ValueError:
-            print(f"{Colors.ERROR}Invalid amount. Use a number (e.g., 0.5){Colors.RESET}")
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
-
-    async def cmd_remove(self, args: str = "") -> None:
-        """Remove coin from portfolio."""
-        if not args:
-            print(f"{Colors.INFO}Usage: /remove <symbol> <amount>{Colors.RESET}")
-            print("  Example: /remove BTC 0.1")
+        if not vulns:
+            print(f"\n{Colors.INFO}No vulnerabilities found.{Colors.RESET}")
+            print("Run scans to discover vulnerabilities: /scan, /web-scan")
             return
 
-        parts = args.upper().split()
-        if len(parts) < 2:
-            print(f"{Colors.ERROR}Please specify amount{Colors.RESET}")
-            return
+        print(f"\n{Colors.HEADER}═══ VULNERABILITIES ═══{Colors.RESET}\n")
 
-        symbol = parts[0]
+        # Summary
+        print(f"{Colors.ERROR}Critical: {counts.get('critical', 0)}{Colors.RESET}  "
+              f"{Colors.ERROR}High: {counts.get('high', 0)}{Colors.RESET}  "
+              f"{Colors.EXCITED}Medium: {counts.get('medium', 0)}{Colors.RESET}  "
+              f"{Colors.INFO}Low: {counts.get('low', 0)}{Colors.RESET}  "
+              f"{Colors.DIM}Info: {counts.get('info', 0)}{Colors.RESET}\n")
 
-        try:
-            amount = float(parts[1])
+        # List vulnerabilities
+        for v in vulns[:25]:
+            severity_color = {
+                Severity.CRITICAL: Colors.ERROR,
+                Severity.HIGH: Colors.ERROR,
+                Severity.MEDIUM: Colors.EXCITED,
+                Severity.LOW: Colors.INFO,
+                Severity.INFO: Colors.DIM,
+            }.get(v.severity, Colors.DIM)
 
-            from pathlib import Path
-            import json
+            port_str = f":{v.port}" if v.port else ""
+            cve_str = f" [{v.cve}]" if v.cve else ""
+            print(f"  {severity_color}[{v.severity.value:8}]{Colors.RESET} {v.title[:50]}{port_str}{cve_str}")
 
-            portfolio_file = Path.home() / ".inkling" / "crypto_portfolio.json"
-            if not portfolio_file.exists():
-                print(f"{Colors.ERROR}Portfolio is empty{Colors.RESET}")
-                return
+        if len(vulns) > 25:
+            print(f"\n  ... and {len(vulns) - 25} more")
 
-            with open(portfolio_file) as f:
-                holdings = json.load(f)
+        print(f"\n{Colors.DIM}Filter by: /vulns [target_id|ip] [severity]{Colors.RESET}")
 
-            if symbol not in holdings:
-                print(f"{Colors.ERROR}{symbol} not in portfolio{Colors.RESET}")
-                return
+    async def cmd_scans(self, args: str = "") -> None:
+        """View scan history."""
+        db = self._get_pentest_db()
+        parts = args.strip().split() if args.strip() else []
 
-            holdings[symbol] = max(0, holdings[symbol] - amount)
+        target_id = None
+        scan_type = None
 
-            if holdings[symbol] == 0:
-                del holdings[symbol]
-                print(f"{Colors.SUCCESS}Removed all {symbol} from portfolio{Colors.RESET}")
+        for part in parts:
+            if part.lower() in ["nmap", "nikto", "recon", "ports", "dns", "whois"]:
+                scan_type = ScanType(part.lower())
             else:
-                print(f"{Colors.SUCCESS}Removed {amount} {symbol} (remaining: {holdings[symbol]}){Colors.RESET}")
+                try:
+                    target_id = int(part)
+                except ValueError:
+                    target = db.get_target_by_ip(part)
+                    target_id = target.id if target else None
 
-            with open(portfolio_file, 'w') as f:
-                json.dump(holdings, f, indent=2)
+        scans = db.get_scans(target_id=target_id, scan_type=scan_type, limit=30)
 
-        except ValueError:
-            print(f"{Colors.ERROR}Invalid amount{Colors.RESET}")
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
-
-    async def cmd_alert(self, args: str = "") -> None:
-        """Set a price alert."""
-        if not args:
-            print(f"{Colors.INFO}Usage: /alert <symbol> <price> <above|below>{Colors.RESET}")
-            print("  Example: /alert BTC 70000 above")
-            print("  Example: /alert ETH 3000 below")
+        if not scans:
+            print(f"\n{Colors.INFO}No scans in history.{Colors.RESET}")
+            print("Run scans to populate history: /scan, /web-scan, /recon, /ports")
             return
 
-        parts = args.split()
-        if len(parts) < 3:
-            print(f"{Colors.ERROR}Please specify symbol, price, and condition{Colors.RESET}")
+        print(f"\n{Colors.HEADER}═══ SCAN HISTORY ═══{Colors.RESET}\n")
+
+        from datetime import datetime
+
+        for s in scans:
+            target = db.get_target(s.target_id)
+            target_str = target.ip if target else f"[{s.target_id}]"
+
+            timestamp = datetime.fromtimestamp(s.timestamp).strftime("%Y-%m-%d %H:%M")
+            type_str = s.scan_type.value.upper()
+            duration_str = f"{s.duration_sec:.1f}s" if s.duration_sec else "-"
+
+            print(f"  [{s.id:3}] {timestamp} {type_str:6} {target_str:20} "
+                  f"ports:{s.ports_found:3} vulns:{s.vulns_found:3} ({duration_str})")
+
+        print(f"\n{Colors.DIM}View details: /scans <scan_id> or filter by target/type{Colors.RESET}")
+
+    async def cmd_report(self, args: str = "") -> None:
+        """Generate pentest report."""
+        db = self._get_pentest_db()
+        parts = args.strip().split() if args.strip() else []
+
+        # Parse format
+        report_format = "markdown"
+        if "html" in parts:
+            report_format = "html"
+            parts.remove("html")
+
+        # Get target IDs
+        target_ids = []
+        for part in parts:
+            try:
+                target_ids.append(int(part))
+            except ValueError:
+                target = db.get_target_by_ip(part)
+                if target:
+                    target_ids.append(target.id)
+
+        # If no targets specified, use all in-scope targets
+        if not target_ids:
+            targets = db.list_targets(scope=Scope.IN_SCOPE)
+            target_ids = [t.id for t in targets]
+
+        if not target_ids:
+            print(f"{Colors.INFO}No targets for report.{Colors.RESET}")
+            print("Add targets and run scans first.")
             return
 
-        symbol = parts[0].upper()
+        print(f"\n{Colors.HEADER}Generating report...{Colors.RESET}\n")
 
         try:
-            target_price = float(parts[1])
-            condition = parts[2].lower()
+            from core.report_generator import ReportGenerator
+            generator = ReportGenerator(db)
+            report = generator.generate(target_ids=target_ids, format=report_format)
 
-            if condition not in ["above", "below"]:
-                print(f"{Colors.ERROR}Condition must be 'above' or 'below'{Colors.RESET}")
-                return
-
+            # Save report
             from pathlib import Path
-            import json
+            from datetime import datetime
 
-            alerts_file = Path.home() / ".inkling" / "crypto_alerts.json"
-            alerts_file.parent.mkdir(parents=True, exist_ok=True)
+            reports_dir = Path("~/.inkling/reports").expanduser()
+            reports_dir.mkdir(parents=True, exist_ok=True)
 
-            if alerts_file.exists():
-                with open(alerts_file) as f:
-                    alerts = json.load(f)
-            else:
-                alerts = []
+            ext = "md" if report_format == "markdown" else "html"
+            filename = f"pentest_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+            report_path = reports_dir / filename
 
-            alert = {
-                "symbol": symbol,
-                "target_price": target_price,
-                "condition": condition,
-                "active": True
-            }
+            with open(report_path, "w") as f:
+                f.write(report)
 
-            alerts.append(alert)
+            print(f"{Colors.SUCCESS}Report saved: {report_path}{Colors.RESET}")
+            print(f"\nReport includes:")
+            print(f"  - {len(target_ids)} target(s)")
+            stats = db.get_stats()
+            print(f"  - {stats['scans']} scan(s)")
+            print(f"  - {stats['vulnerabilities']} vulnerability(ies)")
 
-            with open(alerts_file, 'w') as f:
-                json.dump(alerts, f, indent=2)
-
-            print(f"{Colors.SUCCESS}🔔 Alert set: {symbol} {condition} ${target_price:,.0f}{Colors.RESET}")
-
-        except ValueError:
-            print(f"{Colors.ERROR}Invalid price{Colors.RESET}")
+        except ImportError:
+            print(f"{Colors.ERROR}Report generator not available.{Colors.RESET}")
+            print("Ensure Jinja2 is installed: pip install Jinja2")
         except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
+            print(f"{Colors.ERROR}Report generation failed: {e}{Colors.RESET}")
 
-    async def cmd_alerts(self) -> None:
-        """List all active price alerts."""
-        try:
-            from pathlib import Path
-            import json
-
-            alerts_file = Path.home() / ".inkling" / "crypto_alerts.json"
-            if not alerts_file.exists():
-                print(f"\n{Colors.INFO}No alerts set. Use /alert to create one.{Colors.RESET}")
-                return
-
-            with open(alerts_file) as f:
-                alerts = json.load(f)
-
-            active_alerts = [a for a in alerts if a.get("active", True)]
-
-            if not active_alerts:
-                print(f"\n{Colors.INFO}No active alerts.{Colors.RESET}")
-                return
-
-            print(f"\n{Colors.HEADER}═══ PRICE ALERTS ═══{Colors.RESET}\n")
-
-            for alert in active_alerts:
-                symbol = alert["symbol"]
-                price = alert["target_price"]
-                condition = alert["condition"]
-                emoji = "⬆️" if condition == "above" else "⬇️"
-
-                print(f"  {emoji} {symbol} {condition} ${price:,.0f}")
-
-            print()
-
-        except Exception as e:
-            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")

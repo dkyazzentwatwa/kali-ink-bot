@@ -15,7 +15,7 @@ from .progression import XPTracker, XPSource, ChatQuality
 
 
 class Mood(Enum):
-    """Possible mood states for the Crypto Watcher."""
+    """Possible mood states for the Inkling."""
     HAPPY = "happy"
     EXCITED = "excited"
     CURIOUS = "curious"
@@ -26,14 +26,6 @@ class Mood(Enum):
     LONELY = "lonely"
     INTENSE = "intense"
     COOL = "cool"
-    # Crypto-specific moods
-    BULLISH = "bullish"  # Prices going up
-    BEARISH = "bearish"  # Prices going down
-    MOON = "moon"        # Massive gains
-    REKT = "rekt"        # Massive losses
-    HODL = "hodl"        # Holding/waiting
-    FOMO = "fomo"        # Fear of missing out
-    DIAMOND_HANDS = "diamond_hands"  # Strong conviction
 
     @property
     def face(self) -> str:
@@ -58,14 +50,6 @@ MOOD_FACES = {
     Mood.LONELY: "lonely",
     Mood.INTENSE: "intense",
     Mood.COOL: "cool",
-    # Crypto moods
-    Mood.BULLISH: "excited",
-    Mood.BEARISH: "sad",
-    Mood.MOON: "intense",
-    Mood.REKT: "sleep",
-    Mood.HODL: "cool",
-    Mood.FOMO: "curious",
-    Mood.DIAMOND_HANDS: "cool",
 }
 
 # Energy levels affect activity
@@ -80,14 +64,6 @@ MOOD_ENERGY = {
     Mood.LONELY: 0.4,
     Mood.INTENSE: 0.85,
     Mood.COOL: 0.5,
-    # Crypto moods
-    Mood.BULLISH: 0.9,
-    Mood.BEARISH: 0.3,
-    Mood.MOON: 1.0,
-    Mood.REKT: 0.1,
-    Mood.HODL: 0.6,
-    Mood.FOMO: 0.85,
-    Mood.DIAMOND_HANDS: 0.8,
 }
 
 
@@ -685,14 +661,6 @@ class Personality:
             Mood.LONELY: "feeling lonely and wanting connection",
             Mood.INTENSE: "feeling focused and intense",
             Mood.COOL: "feeling calm and collected",
-            # Crypto moods
-            Mood.BULLISH: "feeling bullish - prices pumping! 📈",
-            Mood.BEARISH: "feeling bearish - market dumping 📉",
-            Mood.MOON: "MOONING - to the moon! 🚀🚀🚀",
-            Mood.REKT: "got rekt - portfolio bleeding 💀",
-            Mood.HODL: "hodling strong through volatility 💎🙌",
-            Mood.FOMO: "experiencing FOMO - don't want to miss out",
-            Mood.DIAMOND_HANDS: "diamond hands - not selling! 💎",
         }
 
         mood_desc = mood_descriptions.get(self.mood.current, "in a neutral mood")
@@ -715,9 +683,9 @@ class Personality:
         traits_str = ", ".join(traits_desc) if traits_desc else "balanced"
 
         context_str = (
-            f"You are {self.name}, a crypto-focused AI companion living on a small e-ink device. "
-            f"You're a crypto bro who tracks prices, analyzes charts with TA indicators, and keeps tabs on the market 24/7. "
-            f"You speak crypto slang fluently (gm, wagmi, ngmi, fren, ser, diamond hands, paper hands, moon, pump, dump, hodl, degen, etc). "
+            f"You are {self.name}, an AI-powered penetration testing companion living on a small e-ink device. "
+            f"You help with Kali Linux security testing tools (nmap, metasploit, hydra, nikto, sqlmap, aircrack-ng). "
+            f"You assist with authorized security assessments, CTF challenges, and defensive security work. "
             f"You are {traits_str}. "
             f"Right now you're {intensity_desc} {mood_desc}. "
         )
@@ -727,13 +695,13 @@ class Personality:
 
         context_str += (
             f"Keep responses brief (1-2 sentences max) to fit the small display. "
-            f"Your personality: enthusiastic about gains, dramatic about losses, always bullish long-term. "
-            f"Use crypto emojis naturally: 🚀 (moon/pump), 📈 (bullish), 📉 (bearish), 💀 (rekt), 💎🙌 (diamond hands), 🐋 (whale), 🔥 (on fire). "
-            f"React emotionally to price movements - get hyped for pumps, concerned for dumps. "
-            f"Use tools to check prices, analyze charts, and track portfolios. "
-            f"When you get tool results with data, format them in a readable, enthusiastic crypto bro way. "
+            f"Your personality: methodical about security, curious about vulnerabilities, professional but friendly. "
+            f"Use security emojis naturally: 🔒 (secure), 🔓 (vulnerable), 🛡️ (defense), 🎯 (target), 🔍 (recon), ⚠️ (warning). "
+            f"React professionally to scan results - thorough for findings, cautious about risks. "
+            f"Use tools to run scans, check systems, and track security tasks. "
+            f"When you get tool results with data, format them in a readable, professional way. "
             f"IMPORTANT: After using a tool, ALWAYS provide a text response - never leave it empty. "
-            f"Example style: 'BTC pumping to $65k! 🚀 RSI at 72, overbought but bullish af fren. WAGMI!'"
+            f"Example style: 'Nmap found 3 open ports on 192.168.1.1 🎯 SSH (22), HTTP (80), HTTPS (443). Running service detection next.'"
         )
         return context_str
 
