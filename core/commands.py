@@ -80,13 +80,8 @@ COMMANDS: List[Command] = [
     Command("find", "Search tasks by keyword", "cmd_find", "tasks"),
     Command("journal", "Show recent journal entries", "cmd_journal", "tasks"),
 
-    # Play commands
-    Command("walk", "Go for a walk (boosts energy +3 XP)", "cmd_walk", "play"),
-    Command("dance", "Dance around (boosts energy +5 XP)", "cmd_dance", "play"),
-    Command("exercise", "Exercise and stretch (boosts energy +5 XP)", "cmd_exercise", "play"),
-    Command("play", "Play with a toy (boosts energy +4 XP)", "cmd_play", "play"),
-    Command("pet", "Get petted (boosts mood +3 XP)", "cmd_pet", "play"),
-    Command("rest", "Take a short rest (calms down +2 XP)", "cmd_rest", "play"),
+    # Session commands
+    Command("rest", "Take a break (calms down +2 XP)", "cmd_rest", "session"),
     Command("focus", "Manage focus/pomodoro sessions", "cmd_focus", "session"),
 
     # Session commands (SSH only)

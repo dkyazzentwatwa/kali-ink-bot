@@ -174,7 +174,7 @@ class SSHChatMode:
 
     async def _welcome(self) -> None:
         """Display welcome message with styled box."""
-        welcome_text = f"Hello! I'm {self.personality.name}."
+        welcome_text = f"{self.personality.name} ready for recon."
 
         # Get face string
         face_str = UNICODE_FACES.get(
@@ -197,8 +197,8 @@ class SSHChatMode:
 
         # Print styled welcome box
         print(f"\n{Colors.BOLD}┌{'─' * 45}┐{Colors.RESET}")
-        print(f"{Colors.BOLD}│{Colors.RESET}  {Colors.FACE}{face_str}{Colors.RESET}  {Colors.BOLD}{self.personality.name}{Colors.RESET}")
-        print(f"{Colors.BOLD}│{Colors.RESET}  {Colors.DIM}Mood: {mood_color}{mood.title()}{Colors.RESET}  {Colors.DIM}Energy: [{energy_bar}]  UP {uptime}{Colors.RESET}")
+        print(f"{Colors.BOLD}│{Colors.RESET}  {Colors.FACE}{face_str}{Colors.RESET}  {Colors.BOLD}KALI INK BOT{Colors.RESET}")
+        print(f"{Colors.BOLD}│{Colors.RESET}  {Colors.DIM}Security Assessment Ready  Energy: [{energy_bar}]  UP {uptime}{Colors.RESET}")
         print(f"{Colors.BOLD}└{'─' * 45}┘{Colors.RESET}")
 
         # Update e-ink display
@@ -210,7 +210,7 @@ class SSHChatMode:
 
     async def _goodbye(self) -> None:
         """Display goodbye message."""
-        goodbye_text = "Goodbye! See you soon..."
+        goodbye_text = "Session ended. Stay secure."
 
         self.personality.mood.set_mood(
             self.personality.mood.current,
@@ -223,7 +223,7 @@ class SSHChatMode:
             mood_text="Sleepy",
         )
 
-        print(f"\n{self.personality.name} says: {goodbye_text}")
+        print(f"\n{Colors.DIM}Session terminated.{Colors.RESET}")
 
     async def _handle_command(self, command: str) -> bool:
         """Handle slash commands."""
@@ -278,16 +278,16 @@ class SSHChatMode:
 
         print(f"""
 {Colors.HEADER}═══════════════════════════════════════════{Colors.RESET}
-{Colors.BOLD}  INKLING{Colors.RESET} - Type anything to chat!
+{Colors.BOLD}  KALI INK BOT{Colors.RESET} - AI Pentest Assistant
 {Colors.HEADER}═══════════════════════════════════════════{Colors.RESET}
 """)
 
-        # Display commands by category (skip social in SSH mode)
+        # Display commands by category
         category_titles = {
+            "pentest": "🎯 Pentesting",
             "session": "Session",
             "info": "Status & Info",
             "personality": "Personality",
-            "play": "Play & Energy",
             "tasks": "Task Management",
             "scheduler": "Scheduler",
             "system": "System",
@@ -297,10 +297,11 @@ class SSHChatMode:
         arg_commands = {
             "face", "ask", "task", "done", "cancel", "delete", "schedule",
             "bash", "tools", "add", "remove", "alert", "chart", "focus", "find",
+            "scan", "web-scan", "recon", "ports", "report",
         }
 
         for cat_key in [
-            "session", "info", "personality", "play", "tasks",
+            "pentest", "session", "info", "personality", "tasks",
             "scheduler", "system", "display",
         ]:
             if cat_key in categories:
