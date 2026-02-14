@@ -354,12 +354,10 @@ class AdapterManager:
         """
         Enable monitor mode on an interface.
 
-        Uses Pwnagotchi-style approach:
-        1. Unblock rfkill
-        2. Bring interface up
-        3. Disable power save
-        4. Create monitor interface using iw
-        5. Bring monitor interface up
+        Tries methods in order:
+        1. Nexmon monstart.sh script (if installed)
+        2. Pwnagotchi-style iw commands
+        3. airmon-ng fallback
 
         Returns (success, new_interface_name_or_error)
         """
@@ -396,6 +394,25 @@ class AdapterManager:
                 return -1, "", f"Command not found: {args[0]}"
             except asyncio.TimeoutExpired:
                 return -1, "", "Command timed out"
+
+        # Method 1: Try Nexmon monstart.sh script if installed
+        nexmon_script = Path("/opt/nexmon/scripts/monstart.sh")
+        if nexmon_script.exists():
+            logger.info("Using Nexmon monstart.sh script")
+            ret, stdout, stderr = await run_cmd(str(nexmon_script), interface, timeout=30)
+            if ret == 0:
+                self.detect_adapters(refresh=True)
+                # Check if monitor interface was created
+                for a in self._adapters:
+                    if a.interface == mon_interface and a.current_mode == "monitor":
+                        logger.info(f"Nexmon enabled monitor mode: {mon_interface}")
+                        return True, mon_interface
+                # Maybe it used the same interface name
+                for a in self._adapters:
+                    if a.interface == interface and a.current_mode == "monitor":
+                        return True, interface
+            else:
+                logger.warning(f"Nexmon script failed: {stderr}, falling back to manual method")
 
         try:
             # Step 1: Unblock rfkill
@@ -460,11 +477,9 @@ class AdapterManager:
         """
         Disable monitor mode on an interface.
 
-        Uses Pwnagotchi-style approach:
-        1. Bring monitor interface down
-        2. Delete monitor interface
-        3. Optionally reload brcmfmac driver
-        4. Bring original interface back up
+        Tries methods in order:
+        1. Nexmon monstop.sh script (if installed)
+        2. Manual iw commands
 
         Returns (success, interface_name_or_error)
         """
@@ -488,6 +503,18 @@ class AdapterManager:
             orig_interface = interface[:-3]  # Remove 'mon' suffix
         else:
             orig_interface = interface
+
+        # Method 1: Try Nexmon monstop.sh script if installed
+        nexmon_script = Path("/opt/nexmon/scripts/monstop.sh")
+        if nexmon_script.exists():
+            logger.info("Using Nexmon monstop.sh script")
+            ret, _, stderr = await run_cmd(str(nexmon_script), orig_interface, timeout=30)
+            if ret == 0:
+                self.detect_adapters(refresh=True)
+                logger.info(f"Nexmon disabled monitor mode: {orig_interface}")
+                return True, orig_interface
+            else:
+                logger.warning(f"Nexmon script failed: {stderr}, falling back to manual method")
 
         try:
             # Step 1: Bring monitor interface down and delete it
