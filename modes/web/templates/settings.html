@@ -144,7 +144,7 @@
         html { transition: background-color 0.5s ease, color 0.5s ease; }
         * { transition: border-color 0.3s ease, background-color 0.3s ease; }
         @media (prefers-color-scheme: dark) {
-            :root {
+            :root:not([data-theme]) {
                 --bg: #1a1a1a;
                 --text: #e5e5e0;
                 --border: #555;
