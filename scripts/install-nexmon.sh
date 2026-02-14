@@ -119,6 +119,26 @@ log_info "Firmware version: $FW_VERSION"
 log_info "Installing build dependencies..."
 
 apt-get update
+
+# Detect distro for correct kernel headers package
+KERNEL_HEADERS=""
+if apt-cache show raspberrypi-kernel-headers &>/dev/null; then
+    KERNEL_HEADERS="raspberrypi-kernel-headers"
+elif apt-cache show linux-headers-$(uname -r) &>/dev/null; then
+    KERNEL_HEADERS="linux-headers-$(uname -r)"
+elif apt-cache show linux-headers-rpi-v8 &>/dev/null; then
+    KERNEL_HEADERS="linux-headers-rpi-v8"
+elif apt-cache show linux-headers-rpi-2712 &>/dev/null; then
+    KERNEL_HEADERS="linux-headers-rpi-2712"
+else
+    log_warn "Could not find kernel headers package automatically"
+    log_info "Available kernel header packages:"
+    apt-cache search linux-headers | grep -i rpi || apt-cache search linux-headers | head -10
+    echo ""
+    read -p "Enter kernel headers package name (or press Enter to skip): " KERNEL_HEADERS
+fi
+
+# Base dependencies
 apt-get install -y \
     git \
     libgmp3-dev \
@@ -132,10 +152,55 @@ apt-get install -y \
     libtool-bin \
     build-essential \
     bc \
-    raspberrypi-kernel-headers \
     libssl-dev
 
+# Install kernel headers if found
+if [ -n "$KERNEL_HEADERS" ]; then
+    log_info "Installing kernel headers: $KERNEL_HEADERS"
+    apt-get install -y "$KERNEL_HEADERS" || log_warn "Kernel headers install failed, trying rpi-source..."
+fi
+
+# Check if kernel headers are actually installed
+if [ ! -d "/lib/modules/$(uname -r)/build" ]; then
+    log_warn "Kernel headers not found at /lib/modules/$(uname -r)/build"
+    log_info "Trying rpi-source to fetch kernel source..."
+
+    # Install rpi-source dependencies
+    apt-get install -y python3 python3-pip || true
+
+    # Try rpi-source
+    if ! command -v rpi-source &>/dev/null; then
+        pip3 install rpi-source || pip install rpi-source || true
+    fi
+
+    if command -v rpi-source &>/dev/null; then
+        log_info "Running rpi-source (this may take a while)..."
+        rpi-source --skip-gcc || log_warn "rpi-source failed"
+    else
+        log_warn "rpi-source not available"
+        log_warn "You may need to manually install kernel headers"
+        log_warn "Try: apt search linux-headers"
+    fi
+fi
+
 log_success "Dependencies installed"
+
+# Final check - warn but continue
+if [ ! -d "/lib/modules/$(uname -r)/build" ]; then
+    echo ""
+    log_warn "============================================"
+    log_warn "Kernel headers not fully installed!"
+    log_warn "Nexmon firmware patching may still work,"
+    log_warn "but some features might fail to compile."
+    log_warn "============================================"
+    echo ""
+    read -p "Continue anyway? [Y/n] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+        log_error "Aborted. Install kernel headers first."
+        exit 1
+    fi
+fi
 
 # ============================================
 # Step 3: Download Nexmon
