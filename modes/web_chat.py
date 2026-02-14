@@ -231,6 +231,23 @@ class WebChatMode:
             return json.dumps({"error": "Authentication required"})
         return None
 
+    def _get_mode_manager(self):
+        """Get or create mode manager instance."""
+        if not hasattr(self, '_mode_manager'):
+            from core.mode_manager import ModeManager, OperationMode
+            modes_cfg = self._config.get("modes", {})
+            default_mode_str = modes_cfg.get("default", "pentest")
+            try:
+                default_mode = OperationMode(default_mode_str)
+            except ValueError:
+                default_mode = OperationMode.PENTEST
+            auto_switch = modes_cfg.get("auto_switch_on_adapter", True)
+            self._mode_manager = ModeManager(
+                default_mode=default_mode,
+                auto_switch_on_adapter=auto_switch,
+            )
+        return self._mode_manager
+
     @staticmethod
     def _safe_resolve_path(base_dir: str, path: str) -> Optional[str]:
         """Safely resolve a path within a base directory.
@@ -1569,6 +1586,149 @@ class WebChatMode:
             try:
                 result = self._wifi_cmds.wifi_capture(bssid)
                 return json.dumps(result)
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/adapter")
+        def wifi_adapter():
+            """Get WiFi adapter info."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                adapter_mgr = get_adapter_manager()
+                status = adapter_mgr.get_status()
+                best = status.get("best_monitor_adapter")
+                adapters = status.get("adapters", [])
+                # Find the best adapter or first available
+                adapter = None
+                if best:
+                    adapter = next((a for a in adapters if a["interface"] == best), None)
+                if not adapter and adapters:
+                    adapter = adapters[0]
+                return json.dumps({"adapter": adapter})
+            except Exception as e:
+                return json.dumps({"error": str(e), "adapter": None})
+
+        @self._app.route("/api/wifi/monitor", method="POST")
+        def wifi_monitor():
+            """Toggle monitor mode."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                data = request.json or {}
+                enable = data.get("enable", True)
+                adapter_mgr = get_adapter_manager()
+
+                # Get best adapter
+                status = adapter_mgr.get_status()
+                interface = status.get("best_monitor_adapter")
+                if not interface:
+                    # Try to find any monitor-capable adapter
+                    adapters = status.get("adapters", [])
+                    for a in adapters:
+                        if a.get("monitor_capable"):
+                            interface = a["interface"]
+                            break
+
+                if not interface:
+                    return json.dumps({"error": "No monitor-capable adapter found"})
+
+                if enable:
+                    success, result = asyncio.run_coroutine_threadsafe(
+                        adapter_mgr.enable_monitor_mode(interface), self._loop
+                    ).result(timeout=30)
+                else:
+                    success, result = asyncio.run_coroutine_threadsafe(
+                        adapter_mgr.disable_monitor_mode(interface), self._loop
+                    ).result(timeout=30)
+
+                # Refresh adapter status
+                new_status = adapter_mgr.get_status()
+                adapters = new_status.get("adapters", [])
+                # Find the updated adapter (may have new name like wlan1mon)
+                adapter = None
+                if success:
+                    # Look for interface by name or result name
+                    for a in adapters:
+                        if a["interface"] == result or a["interface"] == interface:
+                            adapter = a
+                            break
+                if not adapter and adapters:
+                    adapter = adapters[0]
+
+                return json.dumps({
+                    "success": success,
+                    "message": result if not success else f"Monitor mode {'enabled' if enable else 'disabled'}",
+                    "adapter": adapter
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/scan", method="POST")
+        def wifi_scan():
+            """Start WiFi scanning."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                # Get or create mode manager
+                mode_mgr = self._get_mode_manager()
+                from core.mode_manager import OperationMode
+
+                # Switch to WiFi mode if not already
+                if mode_mgr.mode not in (OperationMode.WIFI_PASSIVE, OperationMode.WIFI_ACTIVE):
+                    future = asyncio.run_coroutine_threadsafe(
+                        mode_mgr.switch_mode(OperationMode.WIFI_PASSIVE), self._loop
+                    )
+                    success, msg = future.result(timeout=60)
+                    if not success:
+                        return json.dumps({"error": f"Failed to switch mode: {msg}"})
+
+                return json.dumps({"success": True, "message": "WiFi scanning started"})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/hopping", method="POST")
+        def wifi_hopping():
+            """Toggle channel hopping."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                data = request.json or {}
+                enable = data.get("enable", True)
+                # Channel hopping is managed by bettercap
+                # This is a placeholder - actual implementation would send
+                # commands to bettercap's REST API
+                return json.dumps({"success": True, "hopping": enable})
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/channel", method="POST")
+        def wifi_channel():
+            """Set specific channel."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                data = request.json or {}
+                channel = data.get("channel", 1)
+                # Channel setting is managed by bettercap
+                # This is a placeholder - actual implementation would send
+                # commands to bettercap's REST API
+                return json.dumps({"success": True, "channel": channel})
             except Exception as e:
                 return json.dumps({"error": str(e)})
 
