@@ -1260,9 +1260,7 @@ class WebChatMode:
 
         def get_pentest_db() -> PentestDB:
             """Get PentestDB instance."""
-            pentest_cfg = self._config.get("pentest", {})
-            data_dir = pentest_cfg.get("data_dir", "~/.inkling/pentest")
-            return PentestDB(data_dir)
+            return PentestDB("~/.inkling/pentest.db")
 
         @self._app.route("/api/pentest/stats")
         def pentest_stats():
@@ -1285,14 +1283,15 @@ class WebChatMode:
                     if sev in vuln_counts:
                         vuln_counts[sev] += 1
 
+                # Count in-scope targets
+                in_scope = sum(1 for t in targets if (t.scope.value if hasattr(t.scope, 'value') else t.scope) == "in_scope")
+
                 return json.dumps({
-                    "success": True,
-                    "stats": {
-                        "targets": len(targets),
-                        "scans": len(scans),
-                        "vulns": len(vulns),
-                        "vuln_counts": vuln_counts,
-                    }
+                    "targets": len(targets),
+                    "targets_in_scope": in_scope,
+                    "scans": len(scans),
+                    "vulnerabilities": len(vulns),
+                    "vulns_by_severity": vuln_counts,
                 })
             except Exception as e:
                 return json.dumps({"error": str(e)})
@@ -1425,6 +1424,7 @@ class WebChatMode:
                             "ports_found": s.ports_found,
                             "vulns_found": s.vulns_found,
                             "timestamp": s.timestamp,
+                            "duration_sec": s.duration_sec,
                         }
                         for s in scans
                     ]
@@ -1442,7 +1442,7 @@ class WebChatMode:
 
             try:
                 db = get_pentest_db()
-                scan = db.get_scan_by_id(scan_id)
+                scan = db.get_scan(scan_id)
                 if not scan:
                     response.status = 404
                     return json.dumps({"error": "Scan not found"})
@@ -1494,14 +1494,19 @@ class WebChatMode:
                         pass
 
                 # Get vulns with optional filters
-                if target_id:
-                    vulns = db.get_vulns_by_target(int(target_id))
-                else:
-                    vulns = db.get_vulns(severity=severity_filter, limit=limit)
+                target_filter = int(target_id) if target_id else None
+                vulns = db.get_vulns(
+                    target_id=target_filter,
+                    severity=severity_filter,
+                    limit=limit
+                )
+
+                # Get vuln counts for summary
+                vuln_counts = db.get_vuln_counts()
 
                 return json.dumps({
                     "success": True,
-                    "vulns": [
+                    "vulnerabilities": [
                         {
                             "id": v.id,
                             "scan_id": v.scan_id,
@@ -1511,9 +1516,13 @@ class WebChatMode:
                             "description": v.description,
                             "cvss": v.cvss,
                             "cve": v.cve,
+                            "port": v.port,
+                            "service": v.service,
+                            "evidence": v.evidence,
                         }
                         for v in vulns
-                    ]
+                    ],
+                    "counts": vuln_counts,
                 })
             except Exception as e:
                 return json.dumps({"error": str(e)})
@@ -1945,8 +1954,8 @@ class WebChatMode:
         if cmd_obj.requires_api and not getattr(self, "api_client", None):
             return {"response": "This command requires social features (set api_base in config).", "error": True}
 
-        # Get handler method
-        handler_name = f"_cmd_{cmd_obj.name}"
+        # Get handler method (convert hyphens to underscores for valid Python names)
+        handler_name = f"_cmd_{cmd_obj.name.replace('-', '_')}"
         handler = getattr(self, handler_name, None)
         if not handler:
             return {"response": f"Command handler not implemented: {cmd_obj.name}", "error": True}
