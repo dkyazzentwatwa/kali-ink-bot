@@ -290,7 +290,6 @@ class SSHChatMode:
             "scheduler": "Scheduler",
             "system": "System",
             "display": "Display",
-            "crypto": "Crypto",
         }
 
         arg_commands = {
@@ -300,7 +299,7 @@ class SSHChatMode:
 
         for cat_key in [
             "session", "info", "personality", "play", "tasks",
-            "scheduler", "system", "display", "crypto",
+            "scheduler", "system", "display",
         ]:
             if cat_key in categories:
                 print(f"{Colors.BOLD}{category_titles.get(cat_key, cat_key.title())}:{Colors.RESET}")

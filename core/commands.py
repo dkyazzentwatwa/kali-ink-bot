@@ -46,17 +46,6 @@ COMMANDS: List[Command] = [
     Command("screensaver", "Toggle screen saver on/off", "cmd_screensaver", "display"),
     Command("darkmode", "Toggle dark mode (inverted display)", "cmd_darkmode", "display"),
 
-    # Crypto commands
-    Command("price", "Check price of a cryptocurrency", "cmd_price", "crypto"),
-    Command("watch", "List watched cryptocurrencies", "cmd_watch", "crypto"),
-    Command("chart", "Show TA indicators for a coin", "cmd_chart", "crypto"),
-    Command("portfolio", "Show portfolio value and holdings", "cmd_portfolio", "crypto"),
-    Command("add", "Add coin to watchlist", "cmd_add", "crypto"),
-    Command("remove", "Remove coin from watchlist", "cmd_remove", "crypto"),
-    Command("alert", "Set price alert", "cmd_alert", "crypto"),
-    Command("alerts", "List active price alerts", "cmd_alerts", "crypto"),
-    # NOTE: /top intentionally omitted until a concrete handler is implemented.
-
     # Scheduler commands
     Command("schedule", "Manage scheduled price checks", "cmd_schedule", "scheduler"),
 
@@ -64,7 +53,7 @@ COMMANDS: List[Command] = [
     Command("thoughts", "Show recent autonomous thoughts", "cmd_thoughts", "info"),
     Command("memory", "Show memory stats and entries", "cmd_memory", "info"),
     Command("settings", "Show current settings (SSH)", "cmd_settings", "system"),
-    Command("backup", "Create backup of crypto data", "cmd_backup", "system"),
+    Command("backup", "Create backup of local data", "cmd_backup", "system"),
 
     # WiFi commands
     Command("wifi", "Show WiFi status and saved networks", "cmd_wifi", "system"),

@@ -242,7 +242,6 @@ class WebChatMode:
             "scheduler": "Scheduler",
             "system": "System",
             "display": "Display",
-            "crypto": "Crypto",
             "play": "Play",
             "session": "Session",
         }
@@ -256,16 +255,12 @@ class WebChatMode:
             "face": "/face happy",
             "schedule": "/schedule list",
             "bash": "/bash uname -a",
-            "add": "/add BTC",
-            "remove": "/remove BTC",
-            "alert": "/alert BTC > 70000",
-            "chart": "/chart BTC 4h",
             "focus": "/focus start",
             "tools": "/tools profiles",
         }
         category_order = [
             "info", "personality", "tasks", "scheduler", "system",
-            "display", "crypto", "play", "session",
+            "display", "play", "session",
         ]
 
         categories = get_commands_by_category()

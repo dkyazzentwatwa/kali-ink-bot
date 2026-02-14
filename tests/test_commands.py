@@ -45,7 +45,7 @@ def test_get_commands_by_category():
     assert "display" in categories
     assert "session" in categories
     assert "tasks" in categories
-    assert "crypto" in categories
+    assert "crypto" not in categories
 
     # Verify some specific commands are in correct categories
     info_commands = [c.name for c in categories["info"]]
@@ -91,7 +91,7 @@ def test_command_count():
     assert "memory" in command_names
 
     # Registry should contain a broad command surface.
-    assert len(COMMANDS) >= 35
+    assert len(COMMANDS) >= 28
 
 
 def test_handler_naming_convention():

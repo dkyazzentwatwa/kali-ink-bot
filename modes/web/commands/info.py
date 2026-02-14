@@ -22,7 +22,6 @@ class InfoCommands(CommandHandler):
             "system": "System",
             "display": "Display",
             "session": "Session",
-            "crypto": "Crypto",
             "play": "Play & Energy",
         }
 
@@ -32,7 +31,7 @@ class InfoCommands(CommandHandler):
         }
         ordered_categories = [
             "info", "personality", "tasks", "scheduler", "system", "display",
-            "crypto", "play", "session",
+            "play", "session",
         ]
 
         for cat_key in ordered_categories:
