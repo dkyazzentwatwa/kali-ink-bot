@@ -1,0 +1,1315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WiFi Hunter - {{name}}</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.5/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --bg: #f5f5f0;
+            --text: #1a1a1a;
+            --border: #333;
+            --muted: #666;
+            --accent: #4a90d9;
+        }
+        /* Pastel Color Themes */
+        [data-theme="cream"] { --bg: #f5f5f0; --text: #1a1a1a; --border: #333; --muted: #666; --accent: #4a90d9; }
+        [data-theme="pink"] { --bg: #ffe4e9; --text: #4a1a28; --border: #d4758f; --muted: #8f5066; --accent: #ff6b9d; }
+        [data-theme="mint"] { --bg: #e0f5f0; --text: #1a3a33; --border: #6eb5a3; --muted: #4d8073; --accent: #52d9a6; }
+        [data-theme="lavender"] { --bg: #f0e9ff; --text: #2a1a4a; --border: #9d85d4; --muted: #6b5a8f; --accent: #a78bfa; }
+        [data-theme="peach"] { --bg: #ffe9dc; --text: #4a2a1a; --border: #d49675; --muted: #8f6650; --accent: #ffab7a; }
+        [data-theme="sky"] { --bg: #e0f0ff; --text: #1a2e4a; --border: #6ba3d4; --muted: #4d708f; --accent: #5eb3ff; }
+        [data-theme="butter"] { --bg: #fff9e0; --text: #4a3f1a; --border: #d4c175; --muted: #8f8350; --accent: #ffd952; }
+        [data-theme="rose"] { --bg: #fff0f3; --text: #4a1a2a; --border: #d47590; --muted: #8f5068; --accent: #ff9eb8; }
+        [data-theme="sage"] { --bg: #eff5e9; --text: #2a331a; --border: #8fb575; --muted: #607a4d; --accent: #9bc978; }
+        [data-theme="periwinkle"] { --bg: #e9f0ff; --text: #1a2a4a; --border: #758fd4; --muted: #50638f; --accent: #8ba3ff; }
+        [data-theme="dark"] { --bg: #1a1a1a; --text: #e5e5e5; --border: #444; --muted: #888; --accent: #6ab0f3; }
+        [data-theme="midnight"] { --bg: #0d1117; --text: #c9d1d9; --border: #30363d; --muted: #8b949e; --accent: #58a6ff; }
+        [data-theme="charcoal"] { --bg: #2b2b2b; --text: #e8e6e3; --border: #555; --muted: #999; --accent: #ffa657; }
+        [data-theme="ocean"] { --bg: #e0f2f7; --text: #0d3b47; --border: #4a9fb0; --muted: #2d6d7a; --accent: #00bcd4; }
+        [data-theme="sunset"] { --bg: #ffe8d9; --text: #4a2818; --border: #d47942; --muted: #8f5a35; --accent: #ff6f3c; }
+        [data-theme="forest"] { --bg: #e8f5e9; --text: #1b5e20; --border: #66bb6a; --muted: #388e3c; --accent: #4caf50; }
+        [data-theme="noir"] { --bg: #f8f9fa; --text: #000; --border: #000; --muted: #495057; --accent: #000; }
+        [data-theme="retro"] { --bg: #0d1b0d; --text: #33ff33; --border: #33ff33; --muted: #1a9919; --accent: #66ff66; }
+        html { transition: background-color 0.5s ease, color 0.5s ease; }
+        * { transition: border-color 0.3s ease, background-color 0.3s ease; }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .status-line {
+            font-size: 0.75rem;
+            color: var(--muted);
+        }
+        .face {
+            font-size: 32px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+        }
+
+        .nav a:hover, .nav a.active {
+            background: var(--accent);
+            color: white;
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+
+        .stat-card h3 {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .stat-card .meta {
+            font-size: 0.85rem;
+            color: var(--muted);
+            margin-top: 0.25rem;
+        }
+
+        .stat-card.highlight {
+            border-color: var(--accent);
+        }
+
+        /* Control Cards */
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .control-card {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+
+        .control-card h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-label {
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        .control-value {
+            font-weight: 600;
+        }
+
+        /* Toggle Switch */
+        .toggle {
+            position: relative;
+            width: 50px;
+            height: 26px;
+            cursor: pointer;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--muted);
+            border-radius: 26px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            bottom: 3px;
+            background: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+
+        .toggle input:checked + .toggle-slider:before {
+            transform: translateX(24px);
+        }
+
+        .toggle input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.primary {
+            background: var(--accent);
+            color: white;
+            border-color: var(--accent);
+        }
+
+        .btn.danger {
+            border-color: #e53935;
+            color: #e53935;
+        }
+
+        .btn.danger:hover:not(:disabled) {
+            background: #e53935;
+            color: white;
+        }
+
+        .btn.small {
+            padding: 0.35rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        /* Tables */
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .section h2 {
+            font-size: 1.3rem;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .data-table th {
+            background: var(--accent);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .data-table th:hover {
+            opacity: 0.9;
+        }
+
+        .data-table th .sort-icon {
+            margin-left: 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .data-table tr:hover {
+            background: rgba(0,0,0,0.05);
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Signal Bar */
+        .signal-bar {
+            display: flex;
+            align-items: flex-end;
+            gap: 2px;
+            height: 20px;
+        }
+
+        .signal-bar .bar {
+            width: 4px;
+            background: var(--muted);
+            border-radius: 1px;
+        }
+
+        .signal-bar .bar.active {
+            background: var(--accent);
+        }
+
+        .signal-bar .bar:nth-child(1) { height: 5px; }
+        .signal-bar .bar:nth-child(2) { height: 9px; }
+        .signal-bar .bar:nth-child(3) { height: 13px; }
+        .signal-bar .bar:nth-child(4) { height: 17px; }
+        .signal-bar .bar:nth-child(5) { height: 20px; }
+
+        .signal-text {
+            margin-left: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge.wpa3 { background: #4caf50; color: white; }
+        .badge.wpa2 { background: #2196f3; color: white; }
+        .badge.wpa { background: #ff9800; color: white; }
+        .badge.wep { background: #f44336; color: white; }
+        .badge.open { background: #9e9e9e; color: white; }
+        .badge.captured { background: #4caf50; color: white; }
+        .badge.cracked { background: #ff9800; color: white; }
+        .badge.pending { background: var(--muted); color: white; }
+        .badge.passive { background: #2196f3; color: white; }
+        .badge.active { background: #ff9800; color: white; }
+        .badge.monitor { background: #9c27b0; color: white; }
+        .badge.managed { background: #607d8b; color: white; }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--muted);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+        }
+
+        .empty-state p {
+            margin-bottom: 1rem;
+        }
+
+        /* Chart Container */
+        .chart-container {
+            background: var(--bg);
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            height: 200px;
+        }
+
+        /* Status Indicator */
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .status-dot.active {
+            background: #4caf50;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.inactive {
+            background: var(--muted);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Action buttons in table */
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .control-grid {
+                grid-template-columns: 1fr;
+            }
+            .data-table {
+                font-size: 0.85rem;
+            }
+            .data-table th,
+            .data-table td {
+                padding: 0.5rem;
+            }
+            .nav {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            .nav a {
+                padding: 0.4rem 0.75rem;
+                font-size: 0.85rem;
+            }
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--bg);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .toast {
+            padding: 0.75rem 1.25rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            border: 2px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            animation: slideIn 0.3s ease;
+        }
+
+        .toast.success { border-color: #4caf50; }
+        .toast.error { border-color: #f44336; }
+        .toast.warning { border-color: #ff9800; }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body x-data="wifiApp()">
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>
+                    <span class="face">📡</span>
+                    <span>WiFi Hunter</span>
+                </h1>
+                <div class="status-line">
+                    <span class="status-dot" :class="status.scanning ? 'active' : 'inactive'"></span>
+                    <span x-text="status.scanning ? 'Scanning...' : 'Idle'"></span>
+                    <span x-show="status.last_scan"> | Last scan: <span x-text="formatTime(status.last_scan)"></span></span>
+                </div>
+            </div>
+            <nav class="nav">
+                <a href="/">Chat</a>
+                <a href="/scans">Scans</a>
+                <a href="/vulns">Vulns</a>
+                <a href="/tasks">Tasks</a>
+                <a href="/settings">Settings</a>
+                <a href="/wifi" class="active">WiFi</a>
+            </nav>
+        </header>
+
+        <!-- Stats Dashboard -->
+        <div class="dashboard-grid">
+            <div class="stat-card">
+                <h3>Targets Found</h3>
+                <div class="value" x-text="stats.targets_found">0</div>
+                <div class="meta">Access points detected</div>
+            </div>
+            <div class="stat-card highlight">
+                <h3>Handshakes</h3>
+                <div class="value" x-text="stats.handshakes_captured">0</div>
+                <div class="meta"><span x-text="stats.handshakes_today">0</span> today</div>
+            </div>
+            <div class="stat-card">
+                <h3>Active Clients</h3>
+                <div class="value" x-text="stats.active_clients">0</div>
+                <div class="meta">Connected stations</div>
+            </div>
+            <div class="stat-card">
+                <h3>Cracked</h3>
+                <div class="value" x-text="stats.cracked_count">0</div>
+                <div class="meta" x-text="stats.handshakes_captured > 0 ? Math.round((stats.cracked_count / stats.handshakes_captured) * 100) + '% success' : 'No handshakes'"></div>
+            </div>
+        </div>
+
+        <!-- Control Cards -->
+        <div class="control-grid">
+            <!-- Mode Card -->
+            <div class="control-card">
+                <h3>
+                    <span>Mode</span>
+                    <span class="badge" :class="mode.current" x-text="mode.current"></span>
+                </h3>
+                <div class="control-row">
+                    <span class="control-label">Passive Mode (Listen Only)</span>
+                    <label class="toggle">
+                        <input type="checkbox" :checked="mode.current === 'passive'" @change="toggleMode()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Active attacks require monitor mode</span>
+                </div>
+            </div>
+
+            <!-- Adapter Card -->
+            <div class="control-card">
+                <h3>
+                    <span>Adapter</span>
+                    <span class="badge" :class="adapter.mode" x-text="adapter.mode || 'unknown'"></span>
+                </h3>
+                <div class="control-row">
+                    <span class="control-label">Interface</span>
+                    <span class="control-value" x-text="adapter.interface || 'None'"></span>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Status</span>
+                    <span class="control-value" x-text="adapter.status || 'Unknown'"></span>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Monitor Mode</span>
+                    <label class="toggle">
+                        <input type="checkbox" :checked="adapter.mode === 'monitor'" @change="toggleMonitor()" :disabled="!adapter.interface">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="control-row" style="margin-top: 0.5rem;">
+                    <button class="btn small" @click="refreshAdapter()">Refresh</button>
+                    <button class="btn small primary" @click="startScan()" :disabled="!adapter.interface || status.scanning">
+                        <span x-show="!status.scanning">Start Scan</span>
+                        <span x-show="status.scanning">Scanning...</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Channel Card -->
+            <div class="control-card">
+                <h3>Channel</h3>
+                <div class="control-row">
+                    <span class="control-label">Current Channel</span>
+                    <span class="control-value" x-text="adapter.channel || 'Auto'"></span>
+                </div>
+                <div class="control-row">
+                    <span class="control-label">Channel Hopping</span>
+                    <label class="toggle">
+                        <input type="checkbox" :checked="adapter.hopping" @change="toggleHopping()">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="control-row" style="margin-top: 0.5rem;">
+                    <select class="btn" style="flex: 1;" x-model="selectedChannel" @change="setChannel()">
+                        <option value="">Auto</option>
+                        <template x-for="ch in [1,2,3,4,5,6,7,8,9,10,11,36,40,44,48,52,56,60,64]" :key="ch">
+                            <option :value="ch" x-text="'Channel ' + ch"></option>
+                        </template>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Signal History Chart -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Signal History</h2>
+                <button class="btn small" @click="clearSignalHistory()">Clear</button>
+            </div>
+            <div class="chart-container">
+                <canvas id="signalChart"></canvas>
+            </div>
+        </div>
+
+        <!-- WiFi Targets Table -->
+        <div class="section">
+            <div class="section-header">
+                <h2>WiFi Targets (<span x-text="targets.length">0</span>)</h2>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn small" @click="sortTargets('signal')">Sort by Signal</button>
+                    <button class="btn small" @click="sortTargets('clients')">Sort by Clients</button>
+                    <button class="btn small" @click="refreshTargets()">Refresh</button>
+                </div>
+            </div>
+
+            <template x-if="targets.length === 0">
+                <div class="empty-state">
+                    <p>No WiFi targets detected yet.</p>
+                    <button class="btn primary" @click="startScan()" :disabled="!adapter.interface">Start Scanning</button>
+                </div>
+            </template>
+
+            <template x-if="targets.length > 0">
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th @click="sortTargets('ssid')">
+                                    SSID
+                                    <span class="sort-icon" x-show="sortBy === 'ssid'" x-text="sortAsc ? '▲' : '▼'"></span>
+                                </th>
+                                <th @click="sortTargets('bssid')">
+                                    BSSID
+                                    <span class="sort-icon" x-show="sortBy === 'bssid'" x-text="sortAsc ? '▲' : '▼'"></span>
+                                </th>
+                                <th @click="sortTargets('channel')">
+                                    CH
+                                    <span class="sort-icon" x-show="sortBy === 'channel'" x-text="sortAsc ? '▲' : '▼'"></span>
+                                </th>
+                                <th>Encryption</th>
+                                <th @click="sortTargets('signal')">
+                                    Signal
+                                    <span class="sort-icon" x-show="sortBy === 'signal'" x-text="sortAsc ? '▲' : '▼'"></span>
+                                </th>
+                                <th @click="sortTargets('clients')">
+                                    Clients
+                                    <span class="sort-icon" x-show="sortBy === 'clients'" x-text="sortAsc ? '▲' : '▼'"></span>
+                                </th>
+                                <th>Handshake</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="target in targets" :key="target.bssid">
+                                <tr>
+                                    <td>
+                                        <strong x-text="target.ssid || '[Hidden]'"></strong>
+                                    </td>
+                                    <td style="font-family: monospace; font-size: 0.85rem;" x-text="target.bssid"></td>
+                                    <td x-text="target.channel"></td>
+                                    <td>
+                                        <span class="badge" :class="getEncryptionClass(target.encryption)" x-text="target.encryption"></span>
+                                    </td>
+                                    <td>
+                                        <div style="display: flex; align-items: center;">
+                                            <div class="signal-bar">
+                                                <template x-for="i in 5" :key="i">
+                                                    <div class="bar" :class="getSignalBars(target.signal) >= i ? 'active' : ''"></div>
+                                                </template>
+                                            </div>
+                                            <span class="signal-text" x-text="target.signal + ' dBm'"></span>
+                                        </div>
+                                    </td>
+                                    <td x-text="target.clients || 0"></td>
+                                    <td>
+                                        <span class="badge" :class="target.handshake ? 'captured' : 'pending'" x-text="target.handshake ? 'Captured' : 'Pending'"></span>
+                                    </td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button
+                                                class="btn small danger"
+                                                @click="deauth(target)"
+                                                :disabled="mode.current === 'passive' || !adapter.mode === 'monitor'"
+                                                title="Send deauth packets">
+                                                Deauth
+                                            </button>
+                                            <button
+                                                class="btn small primary"
+                                                @click="capture(target)"
+                                                :disabled="target.handshake"
+                                                title="Capture handshake">
+                                                Capture
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </div>
+
+        <!-- Handshakes Section -->
+        <div class="section">
+            <div class="section-header">
+                <h2>Captured Handshakes (<span x-text="handshakes.length">0</span>)</h2>
+                <button class="btn small" @click="refreshHandshakes()">Refresh</button>
+            </div>
+
+            <template x-if="handshakes.length === 0">
+                <div class="empty-state">
+                    <p>No handshakes captured yet. Target networks with active clients for best results.</p>
+                </div>
+            </template>
+
+            <template x-if="handshakes.length > 0">
+                <div style="overflow-x: auto;">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>SSID</th>
+                                <th>BSSID</th>
+                                <th>Type</th>
+                                <th>Captured</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="hs in handshakes" :key="hs.id">
+                                <tr>
+                                    <td x-text="hs.ssid || '[Hidden]'"></td>
+                                    <td style="font-family: monospace; font-size: 0.85rem;" x-text="hs.bssid"></td>
+                                    <td>
+                                        <span class="badge" :class="hs.type === 'pmkid' ? 'wpa2' : 'wpa'" x-text="hs.type === 'pmkid' ? 'PMKID' : '4-Way'"></span>
+                                    </td>
+                                    <td x-text="formatTime(hs.captured_at)"></td>
+                                    <td>
+                                        <template x-if="hs.cracked">
+                                            <span class="badge cracked">Cracked</span>
+                                        </template>
+                                        <template x-if="!hs.cracked">
+                                            <span class="badge pending">Pending</span>
+                                        </template>
+                                    </td>
+                                    <td>
+                                        <div class="action-buttons">
+                                            <button class="btn small" @click="downloadHandshake(hs)" title="Download .cap file">
+                                                Download
+                                            </button>
+                                            <button class="btn small primary" @click="crackHandshake(hs)" :disabled="hs.cracked" title="Start cracking">
+                                                Crack
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" x-show="loading" style="display: none;">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // Apply saved theme
+        const savedTheme = localStorage.getItem('inklingTheme') || 'cream';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+
+        // Signal history chart
+        let signalChart = null;
+        const signalHistory = {};
+        const maxHistoryPoints = 30;
+
+        function initChart() {
+            const ctx = document.getElementById('signalChart').getContext('2d');
+            signalChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            min: -100,
+                            max: -20,
+                            title: {
+                                display: true,
+                                text: 'Signal (dBm)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    },
+                    animation: {
+                        duration: 300
+                    }
+                }
+            });
+        }
+
+        function updateSignalChart(targets) {
+            if (!signalChart) return;
+
+            const now = new Date().toLocaleTimeString();
+            const colors = [
+                '#4a90d9', '#ff6b9d', '#52d9a6', '#ffd952', '#a78bfa',
+                '#ff9800', '#00bcd4', '#e91e63', '#8bc34a', '#9c27b0'
+            ];
+
+            targets.forEach((target, idx) => {
+                const key = target.bssid;
+                if (!signalHistory[key]) {
+                    signalHistory[key] = {
+                        ssid: target.ssid || target.bssid,
+                        data: [],
+                        color: colors[idx % colors.length]
+                    };
+                }
+                signalHistory[key].data.push(target.signal);
+                if (signalHistory[key].data.length > maxHistoryPoints) {
+                    signalHistory[key].data.shift();
+                }
+            });
+
+            // Update chart labels
+            if (signalChart.data.labels.length >= maxHistoryPoints) {
+                signalChart.data.labels.shift();
+            }
+            signalChart.data.labels.push(now);
+
+            // Update datasets
+            signalChart.data.datasets = Object.entries(signalHistory).map(([bssid, info]) => ({
+                label: info.ssid,
+                data: info.data,
+                borderColor: info.color,
+                backgroundColor: info.color + '20',
+                fill: false,
+                tension: 0.3
+            }));
+
+            signalChart.update('none');
+        }
+
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideIn 0.3s ease reverse';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function wifiApp() {
+            return {
+                loading: false,
+                status: {
+                    scanning: false,
+                    last_scan: null
+                },
+                stats: {
+                    targets_found: 0,
+                    handshakes_captured: 0,
+                    handshakes_today: 0,
+                    active_clients: 0,
+                    cracked_count: 0
+                },
+                mode: {
+                    current: 'passive'
+                },
+                adapter: {
+                    interface: null,
+                    status: 'Unknown',
+                    mode: 'managed',
+                    channel: null,
+                    hopping: true
+                },
+                targets: [],
+                handshakes: [],
+                sortBy: 'signal',
+                sortAsc: false,
+                selectedChannel: '',
+                refreshInterval: null,
+
+                async init() {
+                    initChart();
+                    await this.refreshAll();
+                    // Auto-refresh every 5 seconds
+                    this.refreshInterval = setInterval(() => this.refreshTargets(), 5000);
+                },
+
+                async refreshAll() {
+                    await Promise.all([
+                        this.refreshStatus(),
+                        this.refreshTargets(),
+                        this.refreshHandshakes()
+                    ]);
+                },
+
+                async refreshStatus() {
+                    try {
+                        const resp = await fetch('/api/wifi/status');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.status = data.status || this.status;
+                            this.stats = data.stats || this.stats;
+                            this.mode = data.mode || this.mode;
+                            this.adapter = data.adapter || this.adapter;
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh status:', err);
+                    }
+                },
+
+                async refreshTargets() {
+                    try {
+                        const resp = await fetch('/api/wifi/targets');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.targets = data.targets || [];
+                            this.stats.targets_found = this.targets.length;
+                            this.stats.active_clients = this.targets.reduce((sum, t) => sum + (t.clients || 0), 0);
+                            this.applySorting();
+                            updateSignalChart(this.targets);
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh targets:', err);
+                    }
+                },
+
+                async refreshHandshakes() {
+                    try {
+                        const resp = await fetch('/api/wifi/handshakes');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.handshakes = data.handshakes || [];
+                            this.stats.handshakes_captured = this.handshakes.length;
+                            this.stats.cracked_count = this.handshakes.filter(h => h.cracked).length;
+
+                            // Count today's handshakes
+                            const today = new Date().toDateString();
+                            this.stats.handshakes_today = this.handshakes.filter(h => {
+                                return new Date(h.captured_at * 1000).toDateString() === today;
+                            }).length;
+                        }
+                    } catch (err) {
+                        console.error('Failed to refresh handshakes:', err);
+                    }
+                },
+
+                async refreshAdapter() {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/wifi/adapter');
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.adapter = data.adapter || this.adapter;
+                        }
+                    } catch (err) {
+                        showToast('Failed to refresh adapter', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async toggleMode() {
+                    this.loading = true;
+                    const newMode = this.mode.current === 'passive' ? 'active' : 'passive';
+                    try {
+                        const resp = await fetch('/api/wifi/mode', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ mode: newMode })
+                        });
+                        if (resp.ok) {
+                            this.mode.current = newMode;
+                            showToast(`Switched to ${newMode} mode`, 'success');
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Failed to switch mode', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Failed to switch mode', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async toggleMonitor() {
+                    this.loading = true;
+                    const enable = this.adapter.mode !== 'monitor';
+                    try {
+                        const resp = await fetch('/api/wifi/monitor', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enable })
+                        });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            this.adapter = data.adapter || this.adapter;
+                            showToast(enable ? 'Monitor mode enabled' : 'Monitor mode disabled', 'success');
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Failed to toggle monitor mode', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Failed to toggle monitor mode', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async toggleHopping() {
+                    this.adapter.hopping = !this.adapter.hopping;
+                    try {
+                        await fetch('/api/wifi/hopping', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enable: this.adapter.hopping })
+                        });
+                    } catch (err) {
+                        showToast('Failed to toggle channel hopping', 'error');
+                    }
+                },
+
+                async setChannel() {
+                    if (!this.selectedChannel) {
+                        this.adapter.hopping = true;
+                        return;
+                    }
+                    this.adapter.hopping = false;
+                    try {
+                        const resp = await fetch('/api/wifi/channel', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ channel: parseInt(this.selectedChannel) })
+                        });
+                        if (resp.ok) {
+                            this.adapter.channel = parseInt(this.selectedChannel);
+                            showToast(`Set to channel ${this.selectedChannel}`, 'success');
+                        }
+                    } catch (err) {
+                        showToast('Failed to set channel', 'error');
+                    }
+                },
+
+                async startScan() {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/wifi/scan', {
+                            method: 'POST'
+                        });
+                        if (resp.ok) {
+                            this.status.scanning = true;
+                            showToast('Scan started', 'success');
+                            setTimeout(() => this.refreshTargets(), 2000);
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Failed to start scan', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Failed to start scan', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async deauth(target) {
+                    if (this.mode.current === 'passive') {
+                        showToast('Switch to active mode to send deauth packets', 'warning');
+                        return;
+                    }
+
+                    if (!confirm(`Send deauth packets to ${target.ssid || target.bssid}? This will disconnect clients.`)) {
+                        return;
+                    }
+
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/wifi/deauth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                bssid: target.bssid,
+                                channel: target.channel
+                            })
+                        });
+                        if (resp.ok) {
+                            showToast('Deauth attack started', 'success');
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Deauth failed', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Deauth failed', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async capture(target) {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch('/api/wifi/capture', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                bssid: target.bssid,
+                                channel: target.channel,
+                                ssid: target.ssid
+                            })
+                        });
+                        if (resp.ok) {
+                            showToast('Capture started - waiting for handshake', 'success');
+                            // Poll for handshake
+                            setTimeout(() => this.refreshHandshakes(), 5000);
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Capture failed', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Capture failed', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async downloadHandshake(hs) {
+                    window.open(`/api/wifi/handshakes/${hs.id}/download`, '_blank');
+                },
+
+                async crackHandshake(hs) {
+                    this.loading = true;
+                    try {
+                        const resp = await fetch(`/api/wifi/handshakes/${hs.id}/crack`, {
+                            method: 'POST'
+                        });
+                        if (resp.ok) {
+                            showToast('Cracking started - this may take a while', 'success');
+                        } else {
+                            const err = await resp.json();
+                            showToast(err.error || 'Failed to start cracking', 'error');
+                        }
+                    } catch (err) {
+                        showToast('Failed to start cracking', 'error');
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                sortTargets(field) {
+                    if (this.sortBy === field) {
+                        this.sortAsc = !this.sortAsc;
+                    } else {
+                        this.sortBy = field;
+                        this.sortAsc = field === 'ssid' || field === 'bssid';
+                    }
+                    this.applySorting();
+                },
+
+                applySorting() {
+                    this.targets.sort((a, b) => {
+                        let valA = a[this.sortBy];
+                        let valB = b[this.sortBy];
+
+                        // Handle signal (higher is better, so reverse)
+                        if (this.sortBy === 'signal') {
+                            return this.sortAsc ? valA - valB : valB - valA;
+                        }
+
+                        // Handle strings
+                        if (typeof valA === 'string') {
+                            valA = valA.toLowerCase();
+                            valB = (valB || '').toLowerCase();
+                            return this.sortAsc ?
+                                valA.localeCompare(valB) :
+                                valB.localeCompare(valA);
+                        }
+
+                        // Handle numbers
+                        return this.sortAsc ? valA - valB : valB - valA;
+                    });
+                },
+
+                clearSignalHistory() {
+                    Object.keys(signalHistory).forEach(key => delete signalHistory[key]);
+                    if (signalChart) {
+                        signalChart.data.labels = [];
+                        signalChart.data.datasets = [];
+                        signalChart.update();
+                    }
+                    showToast('Signal history cleared', 'success');
+                },
+
+                getSignalBars(signal) {
+                    // Convert dBm to bars (1-5)
+                    // -30 = excellent, -90 = poor
+                    if (signal >= -50) return 5;
+                    if (signal >= -60) return 4;
+                    if (signal >= -70) return 3;
+                    if (signal >= -80) return 2;
+                    return 1;
+                },
+
+                getEncryptionClass(enc) {
+                    if (!enc) return 'open';
+                    const e = enc.toUpperCase();
+                    if (e.includes('WPA3')) return 'wpa3';
+                    if (e.includes('WPA2')) return 'wpa2';
+                    if (e.includes('WPA')) return 'wpa';
+                    if (e.includes('WEP')) return 'wep';
+                    return 'open';
+                },
+
+                formatTime(timestamp) {
+                    if (!timestamp) return 'Never';
+                    const date = new Date(timestamp * 1000);
+                    return date.toLocaleTimeString();
+                }
+            };
+        }
+    </script>
+</body>
+</html>

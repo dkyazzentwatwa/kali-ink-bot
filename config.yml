@@ -195,6 +195,47 @@ scheduler:
     #   action: "test_greeting"
     #   enabled: false
 
+# WiFi Hunting Configuration
+wifi:
+  enabled: true
+
+  # Adapter configuration
+  adapter:
+    interface: "auto"  # auto-detect or specific (wlan1)
+    monitor_interface: "wlan1mon"  # monitor mode name
+
+  # Bettercap settings
+  bettercap:
+    api_port: 8083
+    api_host: "127.0.0.1"
+    api_username: "inkling"
+    api_password: "changeme"  # Change this!
+    caplets_dir: "~/.inkling/wifi/caplets"
+
+  # Capture settings
+  capture:
+    auto_capture: true  # Automatically capture handshakes when possible
+    save_all_pmkid: true
+    handshake_dir: "~/.inkling/wifi/handshakes"
+    pmkid_dir: "~/.inkling/wifi/pmkid"
+
+  # Deauth settings (use responsibly - authorized testing only)
+  deauth:
+    enabled: false  # Must explicitly enable via /mode wifi_active
+    max_packets: 10
+    cooldown_seconds: 30
+
+# Bluetooth Configuration
+bluetooth:
+  enabled: true
+  scan_duration: 10  # Default scan duration in seconds
+  ble_enabled: true  # Enable BLE scanning
+
+# Mode switching
+modes:
+  default: "pentest"  # Start in pentest mode
+  auto_switch_on_adapter: true  # Auto-switch to wifi mode when monitor adapter detected
+
 # Pentest Configuration (Pi-first profile)
 pentest:
   # Default profile for Raspberry Pi deployments.
@@ -300,6 +341,18 @@ mcp:
     system:
       command: "python"
       args: ["mcp_servers/system.py"]
+
+    # WiFi Hunting Tools (built-in)
+    # AI can scan networks, manage targets, capture handshakes
+    wifi:
+      command: "python"
+      args: ["mcp_servers/wifi.py"]
+
+    # Bluetooth Tools (built-in)
+    # AI can scan for BT/BLE devices, enumerate services
+    bluetooth:
+      command: "python"
+      args: ["mcp_servers/bluetooth.py"]
 
     # Filesystem Access - Inkling Data Directory (built-in, Python)
     # AI can list, read, write, and search files in ~/.inkling/

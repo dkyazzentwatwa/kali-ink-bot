@@ -280,6 +280,8 @@ class SSHChatMode:
         # Display commands by category
         category_titles = {
             "pentest": "🎯 Pentesting",
+            "wifi": "📡 WiFi Hunting",
+            "bluetooth": "🔵 Bluetooth",
             "session": "Session",
             "info": "Status & Info",
             "personality": "Personality",
@@ -293,10 +295,11 @@ class SSHChatMode:
             "face", "ask", "task", "done", "cancel", "delete", "schedule",
             "bash", "tools", "add", "remove", "alert", "chart", "focus", "find",
             "scan", "web-scan", "recon", "ports", "report",
+            "mode", "wifi-deauth", "wifi-capture", "bt-scan", "ble-scan",
         }
 
         for cat_key in [
-            "pentest", "session", "info", "personality", "tasks",
+            "pentest", "wifi", "bluetooth", "session", "info", "personality", "tasks",
             "scheduler", "system", "display",
         ]:
             if cat_key in categories:
@@ -1461,6 +1464,388 @@ class SSHChatMode:
 
         print()
         print(f"{Colors.DIM}Use /btcfg to start BLE configuration service{Colors.RESET}")
+
+    # ================
+    # WiFi Hunting Commands
+    # ================
+
+    def _get_mode_manager(self):
+        """Get or create mode manager instance."""
+        if not hasattr(self, '_mode_manager'):
+            from core.mode_manager import ModeManager, OperationMode
+            modes_cfg = self._config.get("modes", {})
+            default_mode = OperationMode(modes_cfg.get("default", "pentest"))
+            auto_switch = modes_cfg.get("auto_switch_on_adapter", True)
+            self._mode_manager = ModeManager(
+                default_mode=default_mode,
+                auto_switch_on_adapter=auto_switch,
+            )
+        return self._mode_manager
+
+    def _get_wifi_db(self):
+        """Get or create WiFi database instance."""
+        if not hasattr(self, '_wifi_db'):
+            from core.wifi_db import WiFiDB
+            self._wifi_db = WiFiDB()
+        return self._wifi_db
+
+    def _get_adapter_manager(self):
+        """Get or create adapter manager instance."""
+        if not hasattr(self, '_adapter_manager'):
+            from core.wifi_adapter import AdapterManager
+            self._adapter_manager = AdapterManager()
+        return self._adapter_manager
+
+    def _get_bt_hunter(self):
+        """Get or create Bluetooth hunter instance."""
+        if not hasattr(self, '_bt_hunter'):
+            try:
+                from core.bluetooth_hunter import BluetoothHunter
+                self._bt_hunter = BluetoothHunter()
+            except ImportError:
+                return None
+        return self._bt_hunter
+
+    async def cmd_mode(self, args: str = "") -> None:
+        """Switch operation mode."""
+        mode_mgr = self._get_mode_manager()
+
+        if not args.strip():
+            # Show current mode status
+            try:
+                status = await mode_mgr.get_status()
+            except Exception as e:
+                status = {"mode": mode_mgr.mode.value, "error": str(e)}
+
+            print(f"\n{Colors.HEADER}═══ OPERATION MODE ═══{Colors.RESET}\n")
+            print(f"Current mode: {Colors.BOLD}{status.get('mode', 'unknown')}{Colors.RESET}")
+            print()
+            print("Available modes:")
+            print(f"  {Colors.INFO}pentest{Colors.RESET}     - AI-assisted penetration testing (default)")
+            print(f"  {Colors.INFO}wifi{Colors.RESET}        - Passive WiFi monitoring")
+            print(f"  {Colors.INFO}wifi_active{Colors.RESET} - Active WiFi attacks (deauth enabled)")
+            print(f"  {Colors.INFO}bluetooth{Colors.RESET}   - Bluetooth/BLE hunting")
+            print(f"  {Colors.INFO}idle{Colors.RESET}        - Low-power display only")
+            print()
+            print(f"Use: {Colors.DIM}/mode <mode_name>{Colors.RESET}")
+            return
+
+        # Switch mode
+        from core.mode_manager import OperationMode
+        target_mode = args.strip().lower()
+
+        try:
+            mode = OperationMode(target_mode)
+        except ValueError:
+            print(f"{Colors.ERROR}Unknown mode: {target_mode}{Colors.RESET}")
+            print("Valid modes: pentest, wifi, wifi_active, bluetooth, idle")
+            return
+
+        try:
+            success, message = await mode_mgr.switch_mode(mode)
+            if success:
+                print(f"{Colors.SUCCESS}Mode switched to: {mode.value}{Colors.RESET}")
+                print(message)
+            else:
+                print(f"{Colors.ERROR}Mode switch failed: {message}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}Error switching mode: {e}{Colors.RESET}")
+
+    async def cmd_wifi_hunt(self, args: str = "") -> None:
+        """Start WiFi hunting mode."""
+        mode_mgr = self._get_mode_manager()
+
+        try:
+            from core.mode_manager import OperationMode
+            success, message = await mode_mgr.switch_mode(OperationMode.WIFI_PASSIVE)
+
+            if success:
+                print(f"{Colors.SUCCESS}WiFi hunting started!{Colors.RESET}")
+                print(message)
+                print(f"\n{Colors.DIM}Use /wifi-targets to see discovered networks.{Colors.RESET}")
+            else:
+                print(f"{Colors.ERROR}Failed to start WiFi hunting: {message}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}Error: {e}{Colors.RESET}")
+
+    async def cmd_wifi_targets(self, args: str = "") -> None:
+        """List discovered WiFi networks."""
+        wifi_db = self._get_wifi_db()
+
+        # Check for filters
+        has_handshake = None
+        if "handshake" in args.lower():
+            has_handshake = True
+
+        targets = wifi_db.list_targets(has_handshake=has_handshake, limit=50)
+
+        if not targets:
+            print(f"\n{Colors.INFO}No WiFi targets discovered yet.{Colors.RESET}")
+            print(f"\n{Colors.DIM}Start hunting with /wifi-hunt or /mode wifi{Colors.RESET}")
+            return
+
+        print(f"\n{Colors.HEADER}═══ WIFI TARGETS ({len(targets)} found) ═══{Colors.RESET}\n")
+        print(f"{'SSID':<20} {'BSSID':<18} {'Ch':>3} {'Sig':>5} {'Enc':<5} {'HS':>2}")
+        print("-" * 60)
+
+        for t in targets[:30]:
+            ssid = (t.ssid or "<hidden>")[:18]
+            hs = "Y" if t.handshake_captured or t.pmkid_captured else "-"
+            enc = t.encryption.value[:5] if t.encryption else "?"
+            print(f"{ssid:<20} {t.bssid:<18} {t.channel:>3} {t.signal_last:>5} {enc:<5} {hs:>2}")
+
+        if len(targets) > 30:
+            print(f"\n... and {len(targets) - 30} more")
+
+    async def cmd_wifi_deauth(self, args: str = "") -> None:
+        """Deauth a client from an AP."""
+        if not args.strip():
+            print(f"\n{Colors.INFO}Usage: /wifi-deauth <BSSID> [client_mac] [count]{Colors.RESET}")
+            print(f"\n{Colors.DIM}Requires wifi_active mode. Enable with: /mode wifi_active{Colors.RESET}")
+            return
+
+        parts = args.strip().split()
+        bssid = parts[0]
+        client = parts[1] if len(parts) > 1 else None
+        count = int(parts[2]) if len(parts) > 2 else 3
+
+        mode_mgr = self._get_mode_manager()
+
+        if not mode_mgr.is_active_mode():
+            print(f"{Colors.ERROR}Deauth requires active mode.{Colors.RESET}")
+            print(f"\n{Colors.DIM}Enable with: /mode wifi_active{Colors.RESET}")
+            return
+
+        try:
+            success, message = await mode_mgr.wifi_deauth(bssid, client, count)
+            if success:
+                print(f"{Colors.SUCCESS}Deauth sent: {message}{Colors.RESET}")
+            else:
+                print(f"{Colors.ERROR}Deauth failed: {message}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}Deauth error: {e}{Colors.RESET}")
+
+    async def cmd_wifi_capture(self, args: str = "") -> None:
+        """Capture PMKID from a target."""
+        if not args.strip():
+            print(f"\n{Colors.INFO}Usage: /wifi-capture <BSSID>{Colors.RESET}")
+            print(f"\n{Colors.DIM}Attempts to capture PMKID from target AP.{Colors.RESET}")
+            return
+
+        bssid = args.strip().split()[0]
+        mode_mgr = self._get_mode_manager()
+
+        try:
+            success, message = await mode_mgr.wifi_capture_pmkid(bssid)
+            if success:
+                print(f"{Colors.SUCCESS}{message}{Colors.RESET}")
+            else:
+                print(f"{Colors.ERROR}{message}{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}Capture error: {e}{Colors.RESET}")
+
+    async def cmd_wifi_survey(self, args: str = "") -> None:
+        """Run WiFi channel survey."""
+        mode_mgr = self._get_mode_manager()
+
+        if not mode_mgr.is_wifi_mode():
+            print(f"{Colors.ERROR}Survey requires WiFi mode.{Colors.RESET}")
+            print(f"\n{Colors.DIM}Start with: /mode wifi{Colors.RESET}")
+            return
+
+        print(f"\n{Colors.INFO}Running channel survey...{Colors.RESET}\n")
+
+        try:
+            result = await mode_mgr.wifi_survey()
+
+            if "error" in result:
+                print(f"{Colors.ERROR}Survey error: {result['error']}{Colors.RESET}")
+                return
+
+            print(f"{Colors.HEADER}═══ WIFI CHANNEL SURVEY ═══{Colors.RESET}\n")
+
+            survey = result.get("survey", [])
+            for ch in sorted(survey, key=lambda x: x.get("channel", 0)):
+                channel = ch.get("channel", "?")
+                networks = ch.get("networks", 0)
+                avg_signal = ch.get("avg_signal", 0)
+                print(f"Channel {channel:2}: {networks:2} networks, avg signal: {avg_signal} dBm")
+        except Exception as e:
+            print(f"{Colors.ERROR}Survey error: {e}{Colors.RESET}")
+
+    async def cmd_handshakes(self, args: str = "") -> None:
+        """List captured handshakes."""
+        wifi_db = self._get_wifi_db()
+
+        # Check for cracked filter
+        cracked = None
+        if "cracked" in args.lower():
+            cracked = True
+
+        handshakes = wifi_db.list_handshakes(cracked=cracked, limit=50)
+
+        if not handshakes:
+            msg = "No handshakes captured yet." if cracked is None else "No cracked handshakes."
+            print(f"\n{Colors.INFO}{msg}{Colors.RESET}")
+            return
+
+        print(f"\n{Colors.HEADER}═══ CAPTURED HANDSHAKES ({len(handshakes)}) ═══{Colors.RESET}\n")
+        print(f"{'SSID':<20} {'BSSID':<18} {'Type':<6} {'Cracked':<8} {'File'}")
+        print("-" * 70)
+
+        for h in handshakes:
+            ssid = (h.ssid or "<hidden>")[:18]
+            cracked_str = f"{Colors.SUCCESS}YES{Colors.RESET}" if h.cracked else "-"
+            file_short = h.file_path.split("/")[-1][:20]
+            print(f"{ssid:<20} {h.bssid:<18} {h.capture_type.value:<6} {cracked_str:<8} {file_short}")
+
+    async def cmd_adapters(self, args: str = "") -> None:
+        """List WiFi adapters."""
+        adapter_mgr = self._get_adapter_manager()
+        status = adapter_mgr.get_status()
+
+        adapters = status.get("adapters", [])
+
+        if not adapters:
+            print(f"\n{Colors.INFO}No WiFi adapters detected.{Colors.RESET}")
+            print(f"\n{Colors.DIM}Plug in a monitor-mode capable adapter.{Colors.RESET}")
+            return
+
+        print(f"\n{Colors.HEADER}═══ WIFI ADAPTERS ({len(adapters)} found) ═══{Colors.RESET}")
+
+        for a in adapters:
+            print(f"\n{Colors.BOLD}{a['interface']}:{Colors.RESET}")
+            print(f"  Driver:   {a['driver']}")
+            print(f"  Chipset:  {a['chipset']}")
+            print(f"  MAC:      {a['mac_address']}")
+            print(f"  Mode:     {a['current_mode']}")
+            monitor = f"{Colors.SUCCESS}Yes{Colors.RESET}" if a['monitor_capable'] else f"{Colors.DIM}No{Colors.RESET}"
+            inject = f"{Colors.SUCCESS}Yes{Colors.RESET}" if a['injection_capable'] else f"{Colors.DIM}No{Colors.RESET}"
+            print(f"  Monitor:  {monitor}")
+            print(f"  Inject:   {inject}")
+            if a['bands']:
+                print(f"  Bands:    {', '.join(a['bands'])}")
+            if a['connected']:
+                print(f"  Status:   {Colors.SUCCESS}Connected{Colors.RESET}")
+
+        print()
+        print(f"Monitor capable: {status.get('monitor_capable', 0)}")
+        print(f"Injection capable: {status.get('injection_capable', 0)}")
+        if status.get('best_monitor_adapter'):
+            print(f"Best for hunting: {Colors.INFO}{status['best_monitor_adapter']}{Colors.RESET}")
+
+    # ================
+    # Bluetooth Commands
+    # ================
+
+    async def cmd_bt_scan(self, args: str = "") -> None:
+        """Scan for classic Bluetooth devices."""
+        hunter = self._get_bt_hunter()
+        if not hunter:
+            print(f"{Colors.ERROR}Bluetooth hunter not available. Check dependencies.{Colors.RESET}")
+            return
+
+        # Parse duration
+        duration = 10
+        if args.strip():
+            try:
+                duration = int(args.strip())
+            except ValueError:
+                pass
+
+        print(f"\n{Colors.INFO}Scanning for Bluetooth devices ({duration}s)...{Colors.RESET}\n")
+
+        try:
+            devices = await hunter.scan_classic(duration)
+
+            if not devices:
+                print(f"{Colors.DIM}No Bluetooth devices found.{Colors.RESET}")
+                return
+
+            print(f"{Colors.HEADER}═══ BLUETOOTH DEVICES ({len(devices)}) ═══{Colors.RESET}\n")
+            print(f"{'Address':<18} {'Name':<20} {'Class':<12} {'RSSI'}")
+            print("-" * 60)
+
+            for d in devices:
+                name = (d.name or "Unknown")[:18]
+                dev_class = d.device_class[:10]
+                rssi = f"{d.rssi} dBm" if d.rssi else "N/A"
+                print(f"{d.address:<18} {name:<20} {dev_class:<12} {rssi}")
+        except asyncio.TimeoutError:
+            print(f"{Colors.ERROR}Bluetooth scan timed out.{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}Scan error: {e}{Colors.RESET}")
+
+    async def cmd_ble_scan(self, args: str = "") -> None:
+        """Scan for BLE devices."""
+        hunter = self._get_bt_hunter()
+        if not hunter:
+            print(f"{Colors.ERROR}Bluetooth hunter not available. Check dependencies.{Colors.RESET}")
+            return
+
+        # Parse duration
+        duration = 10
+        if args.strip():
+            try:
+                duration = int(args.strip())
+            except ValueError:
+                pass
+
+        print(f"\n{Colors.INFO}Scanning for BLE devices ({duration}s)...{Colors.RESET}\n")
+
+        try:
+            devices = await hunter.scan_ble(duration)
+
+            if not devices:
+                print(f"{Colors.DIM}No BLE devices found.{Colors.RESET}")
+                return
+
+            print(f"{Colors.HEADER}═══ BLE DEVICES ({len(devices)}) ═══{Colors.RESET}\n")
+            print(f"{'Address':<18} {'Name':<25} {'RSSI'}")
+            print("-" * 60)
+
+            for d in devices:
+                name = (d.name or "Unknown")[:23]
+                rssi = f"{d.rssi} dBm" if d.rssi else "N/A"
+                print(f"{d.address:<18} {name:<25} {rssi}")
+        except asyncio.TimeoutError:
+            print(f"{Colors.ERROR}BLE scan timed out.{Colors.RESET}")
+        except Exception as e:
+            print(f"{Colors.ERROR}BLE scan error: {e}{Colors.RESET}")
+
+    async def cmd_bt_devices(self, args: str = "") -> None:
+        """List known Bluetooth devices."""
+        hunter = self._get_bt_hunter()
+        if not hunter:
+            print(f"{Colors.ERROR}Bluetooth hunter not available.{Colors.RESET}")
+            return
+
+        devices = hunter.list_devices()
+
+        if not devices:
+            print(f"\n{Colors.INFO}No Bluetooth devices in cache.{Colors.RESET}")
+            print(f"\n{Colors.DIM}Run /bt-scan or /ble-scan first.{Colors.RESET}")
+            return
+
+        # Filter by type if specified
+        ble_only = "ble" in args.lower()
+        classic_only = "classic" in args.lower()
+
+        if ble_only:
+            devices = [d for d in devices if d.ble]
+        elif classic_only:
+            devices = [d for d in devices if not d.ble]
+
+        print(f"\n{Colors.HEADER}═══ KNOWN BLUETOOTH DEVICES ({len(devices)}) ═══{Colors.RESET}\n")
+        print(f"{'Address':<18} {'Name':<20} {'Class':<12} {'Type':<6} {'RSSI'}")
+        print("-" * 70)
+
+        for d in devices:
+            name = (d.name or "Unknown")[:18]
+            dev_class = d.device_class[:10]
+            dev_type = "BLE" if d.ble else "Classic"
+            rssi = f"{d.rssi}" if d.rssi else "N/A"
+            print(f"{d.address:<18} {name:<20} {dev_class:<12} {dev_type:<6} {rssi}")
 
     # ================
     # Play Commands

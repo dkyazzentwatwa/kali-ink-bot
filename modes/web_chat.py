@@ -8,6 +8,7 @@ Runs a Bottle server on http://inkling.local:8081
 import asyncio
 import json
 import os
+import select
 import threading
 import inspect
 import hashlib
@@ -20,6 +21,16 @@ from queue import Queue
 from collections import defaultdict
 
 from bottle import Bottle, request, response, static_file, template, redirect
+
+# WebSocket and PTY support for terminal
+try:
+    from geventwebsocket import WebSocketError
+    from geventwebsocket.handler import WebSocketHandler
+    from gevent.pywsgi import WSGIServer
+    import ptyprocess
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    WEBSOCKET_AVAILABLE = False
 
 from core.brain import Brain, AllProvidersExhaustedError, QuotaExceededError
 from core.display import DisplayManager
@@ -44,6 +55,8 @@ from modes.web.commands.display import DisplayCommands
 from modes.web.commands.utilities import UtilityCommands
 from modes.web.commands.focus import FocusCommands
 from modes.web.commands.pentest import PentestCommands
+from modes.web.commands.wifi import WiFiCommands
+from modes.web.commands.bluetooth import BluetoothCommands
 
 
 # Template loading
@@ -76,6 +89,10 @@ FILES_TEMPLATE = _load_template("files.html")
 SCANS_TEMPLATE = _load_template("scans.html")
 
 VULNS_TEMPLATE = _load_template("vulns.html")
+
+TERMINAL_TEMPLATE = _load_template("terminal.html")
+
+WIFI_TEMPLATE = _load_template("wifi.html")
 
 
 class WebChatMode:
@@ -161,6 +178,8 @@ class WebChatMode:
         self._utility_cmds = UtilityCommands(self)
         self._focus_cmds = FocusCommands(self)
         self._pentest_cmds = PentestCommands(self)
+        self._wifi_cmds = WiFiCommands(self)
+        self._bluetooth_cmds = BluetoothCommands(self)
 
         self._setup_routes()
 
@@ -1254,6 +1273,259 @@ class WebChatMode:
                 thought=self.personality.last_thought or "",
             )
 
+        @self._app.route("/terminal")
+        def terminal_page():
+            auth_check = self._require_auth()
+            if auth_check:
+                return auth_check
+            return template(
+                TERMINAL_TEMPLATE,
+                name=self.personality.name,
+                face=self._get_face_str(),
+                status=self.personality.get_status_line(),
+                thought=self.personality.last_thought or "",
+            )
+
+        # WebSocket terminal endpoint
+        @self._app.route("/api/terminal/ws")
+        def terminal_websocket():
+            """WebSocket endpoint for live terminal."""
+            if not WEBSOCKET_AVAILABLE:
+                response.status = 503
+                return "WebSocket support not available"
+
+            # Auth check via cookie (WebSocket doesn't support standard auth headers)
+            if self._auth_enabled:
+                session_cookie = request.get_cookie("inkling_session", secret=self._secret_key)
+                if session_cookie != "authenticated":
+                    response.status = 401
+                    return "Unauthorized"
+
+            wsock = request.environ.get("wsgi.websocket")
+            if not wsock:
+                response.status = 400
+                return "WebSocket connection required"
+
+            # Start PTY process
+            try:
+                import ptyprocess
+                pty = ptyprocess.PtyProcess.spawn(
+                    ["/bin/bash", "-l"],
+                    dimensions=(24, 80),
+                    env={
+                        "TERM": "xterm-256color",
+                        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                        "HOME": os.environ.get("HOME", "/root"),
+                        "USER": os.environ.get("USER", "root"),
+                        "LANG": "en_US.UTF-8",
+                    }
+                )
+            except Exception as e:
+                wsock.close()
+                return
+
+            # Reader thread: PTY -> WebSocket
+            def pty_reader():
+                try:
+                    while pty.isalive():
+                        try:
+                            if pty.fd in select.select([pty.fd], [], [], 0.1)[0]:
+                                data = pty.read(4096)
+                                if data:
+                                    wsock.send(data)
+                        except (EOFError, OSError):
+                            break
+                except WebSocketError:
+                    pass
+                finally:
+                    if pty.isalive():
+                        pty.terminate(force=True)
+
+            reader_thread = threading.Thread(target=pty_reader, daemon=True)
+            reader_thread.start()
+
+            # Main loop: WebSocket -> PTY
+            try:
+                while pty.isalive():
+                    try:
+                        data = wsock.receive()
+                        if data is None:
+                            break
+                        # Handle resize messages
+                        if isinstance(data, str) and data.startswith("\x1b[8;"):
+                            # Parse resize: ESC[8;rows;colst
+                            try:
+                                parts = data[4:-1].split(";")
+                                if len(parts) == 2:
+                                    rows, cols = int(parts[0]), int(parts[1])
+                                    pty.setwinsize(rows, cols)
+                            except (ValueError, IndexError):
+                                pass
+                        else:
+                            if isinstance(data, str):
+                                data = data.encode("utf-8")
+                            pty.write(data)
+                    except WebSocketError:
+                        break
+            finally:
+                if pty.isalive():
+                    pty.terminate(force=True)
+                reader_thread.join(timeout=1)
+
+            return ""
+
+        @self._app.route("/wifi")
+        def wifi_page():
+            auth_check = self._require_auth()
+            if auth_check:
+                return auth_check
+            return template(
+                WIFI_TEMPLATE,
+                name=self.personality.name,
+                face=self._get_face_str(),
+                status=self.personality.get_status_line(),
+                thought=self.personality.last_thought or "",
+            )
+
+        # ========================================
+        # WiFi API Routes
+        # ========================================
+
+        def get_wifi_db():
+            """Get WiFiDB instance."""
+            from core.wifi_db import WiFiDB
+            return WiFiDB()
+
+        def get_adapter_manager():
+            """Get AdapterManager instance."""
+            from core.wifi_adapter import AdapterManager
+            return AdapterManager()
+
+        @self._app.route("/api/wifi/status")
+        def wifi_status():
+            """Get WiFi hunting status."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                adapters = get_adapter_manager().get_status()
+                wifi_db = get_wifi_db()
+                stats = wifi_db.get_stats()
+
+                # Get mode info
+                mode = "pentest"
+                if hasattr(self, '_mode_manager'):
+                    mode = self._mode_manager.mode.value
+
+                return json.dumps({
+                    "mode": mode,
+                    "adapters": adapters,
+                    "stats": stats,
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/targets")
+        def wifi_targets():
+            """List WiFi targets."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                wifi_db = get_wifi_db()
+                targets = wifi_db.list_targets(limit=100)
+                return json.dumps({
+                    "success": True,
+                    "targets": [t.to_dict() for t in targets],
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/handshakes")
+        def wifi_handshakes():
+            """List captured handshakes."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            try:
+                wifi_db = get_wifi_db()
+                handshakes = wifi_db.list_handshakes(limit=50)
+                return json.dumps({
+                    "success": True,
+                    "handshakes": [h.to_dict() for h in handshakes],
+                })
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/mode", method="POST")
+        def wifi_mode_switch():
+            """Switch WiFi mode."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            data = request.json or {}
+            target_mode = data.get("mode", "pentest")
+
+            try:
+                result = self._wifi_cmds.mode(target_mode)
+                return json.dumps(result)
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/deauth", method="POST")
+        def wifi_deauth():
+            """Send deauth packets."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            data = request.json or {}
+            bssid = data.get("bssid")
+            client = data.get("client")
+            count = data.get("count", 3)
+
+            if not bssid:
+                return json.dumps({"error": "bssid required"})
+
+            try:
+                args = f"{bssid}"
+                if client:
+                    args += f" {client}"
+                args += f" {count}"
+                result = self._wifi_cmds.wifi_deauth(args)
+                return json.dumps(result)
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
+        @self._app.route("/api/wifi/capture", method="POST")
+        def wifi_capture():
+            """Capture PMKID."""
+            auth_err = self._require_api_auth()
+            if auth_err:
+                return auth_err
+            response.content_type = "application/json"
+
+            data = request.json or {}
+            bssid = data.get("bssid")
+
+            if not bssid:
+                return json.dumps({"error": "bssid required"})
+
+            try:
+                result = self._wifi_cmds.wifi_capture(bssid)
+                return json.dumps(result)
+            except Exception as e:
+                return json.dumps({"error": str(e)})
+
         # ========================================
         # Pentest API Routes
         # ========================================
@@ -1936,6 +2208,58 @@ class WebChatMode:
         """Generate pentest report."""
         return self._pentest_cmds.report(args)
 
+    # ================
+    # WiFi Commands
+    # ================
+
+    def _cmd_mode(self, args: str = "") -> Dict[str, Any]:
+        """Switch operation mode."""
+        return self._wifi_cmds.mode(args)
+
+    def _cmd_wifi_hunt(self, args: str = "") -> Dict[str, Any]:
+        """Start WiFi hunting mode."""
+        return self._wifi_cmds.wifi_hunt(args)
+
+    def _cmd_wifi_targets(self, args: str = "") -> Dict[str, Any]:
+        """List discovered WiFi networks."""
+        return self._wifi_cmds.wifi_targets(args)
+
+    def _cmd_wifi_deauth(self, args: str = "") -> Dict[str, Any]:
+        """Deauth client from AP."""
+        return self._wifi_cmds.wifi_deauth(args)
+
+    def _cmd_wifi_capture(self, args: str = "") -> Dict[str, Any]:
+        """Capture handshake/PMKID."""
+        return self._wifi_cmds.wifi_capture(args)
+
+    def _cmd_wifi_survey(self, args: str = "") -> Dict[str, Any]:
+        """Run WiFi channel survey."""
+        return self._wifi_cmds.wifi_survey(args)
+
+    def _cmd_handshakes(self, args: str = "") -> Dict[str, Any]:
+        """List captured handshakes."""
+        return self._wifi_cmds.handshakes(args)
+
+    def _cmd_adapters(self, args: str = "") -> Dict[str, Any]:
+        """List WiFi adapters."""
+        return self._wifi_cmds.adapters(args)
+
+    # ================
+    # Bluetooth Commands
+    # ================
+
+    def _cmd_bt_scan(self, args: str = "") -> Dict[str, Any]:
+        """Scan for Bluetooth devices."""
+        return self._bluetooth_cmds.bt_scan(args)
+
+    def _cmd_bt_devices(self, args: str = "") -> Dict[str, Any]:
+        """List known Bluetooth devices."""
+        return self._bluetooth_cmds.bt_devices(args)
+
+    def _cmd_ble_scan(self, args: str = "") -> Dict[str, Any]:
+        """Scan for BLE devices."""
+        return self._bluetooth_cmds.ble_scan(args)
+
     def _handle_command_sync(self, command: str) -> Dict[str, Any]:
         """Handle slash commands (sync wrapper)."""
         parts = command.split(maxsplit=1)
@@ -2105,13 +2429,26 @@ class WebChatMode:
             print("🔐 Authentication required")
         print("Press Ctrl+C to stop")
 
-        # Run Bottle in a thread
+        # Run server in a thread
         def run_server():
-            self._app.run(
-                host=self.host,
-                port=self.port,
-                quiet=True,
-            )
+            if WEBSOCKET_AVAILABLE:
+                # Use GeventWebSocketServer for WebSocket support
+                print("🔌 WebSocket terminal enabled")
+                server = WSGIServer(
+                    (self.host, self.port),
+                    self._app,
+                    handler_class=WebSocketHandler,
+                    log=None,
+                )
+                server.serve_forever()
+            else:
+                # Fall back to standard Bottle server
+                print("⚠️  WebSocket unavailable (install gevent-websocket)")
+                self._app.run(
+                    host=self.host,
+                    port=self.port,
+                    quiet=True,
+                )
 
         server_thread = threading.Thread(target=run_server, daemon=True)
         server_thread.start()

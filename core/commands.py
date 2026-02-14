@@ -49,6 +49,21 @@ COMMANDS: List[Command] = [
     Command("scans", "View scan history", "cmd_scans", "pentest"),
     Command("report", "Generate pentest report", "cmd_report", "pentest"),
 
+    # Mode & WiFi hunting commands
+    Command("mode", "Switch operation mode (pentest/wifi/bluetooth)", "cmd_mode", "wifi"),
+    Command("wifi-hunt", "Start WiFi hunting (passive mode)", "cmd_wifi_hunt", "wifi"),
+    Command("wifi-targets", "List discovered WiFi networks", "cmd_wifi_targets", "wifi"),
+    Command("wifi-deauth", "Deauth client from AP (requires active mode)", "cmd_wifi_deauth", "wifi"),
+    Command("wifi-capture", "Capture handshake/PMKID from target", "cmd_wifi_capture", "wifi"),
+    Command("wifi-survey", "Run WiFi channel survey", "cmd_wifi_survey", "wifi"),
+    Command("handshakes", "List captured WiFi handshakes", "cmd_handshakes", "wifi"),
+    Command("adapters", "List WiFi adapters and capabilities", "cmd_adapters", "wifi"),
+
+    # Bluetooth commands
+    Command("bt-scan", "Scan for Bluetooth devices", "cmd_bt_scan", "bluetooth"),
+    Command("bt-devices", "List known Bluetooth devices", "cmd_bt_devices", "bluetooth"),
+    Command("ble-scan", "Scan for BLE devices", "cmd_ble_scan", "bluetooth"),
+
     # Display commands
     Command("face", "Test a face expression", "cmd_face", "display"),
     Command("faces", "List all available faces", "cmd_faces", "display"),

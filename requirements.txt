@@ -50,6 +50,17 @@ paramiko>=3.3.0            # SSH client for remote ops
 netaddr>=0.9.0             # IP/network calculations
 Jinja2>=3.1.0              # Report templating
 
+# WebSocket support for terminal
+bottle-websocket>=0.2.9
+gevent-websocket>=0.10.1
+gevent>=23.0.0
+
+# Terminal PTY support
+ptyprocess>=0.7.0
+
+# Bluetooth Low Energy (optional - for BLE scanning)
+bleak>=0.21.0
+
 # Development
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
