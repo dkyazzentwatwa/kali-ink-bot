@@ -188,18 +188,24 @@
             padding-bottom: 0.5rem;
             border-bottom: 1px solid var(--border);
         }
-        .back-button {
-            padding: 0.5rem 1rem;
-            font-family: inherit;
-            font-size: 1rem;
-            background: transparent;
-            color: var(--text);
-            border: 2px solid var(--border);
-            cursor: pointer;
+        .nav {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
         }
-        .back-button:hover {
-            background: var(--text);
-            color: var(--bg);
+        .nav a {
+            color: var(--text);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border: 2px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+        .nav a:hover {
+            background: var(--accent);
+            color: white;
+            transform: translateY(-2px);
         }
         .settings-section {
             max-width: 600px;
@@ -314,14 +320,17 @@
             .thought-line {
                 max-width: 40ch;
             }
-            header > div:last-child {
+            .nav {
                 width: 100%;
-                justify-content: space-between !important;
+                justify-content: space-between;
+                gap: 6px;
             }
-            .back-button {
+            .nav a {
                 flex: 1;
-                padding: 0.6rem 0.5rem;
-                font-size: 0.85rem;
+                text-align: center;
+                padding: 6px 8px;
+                font-size: 0.75rem;
+                white-space: nowrap;
             }
             .settings-section {
                 max-width: 100%;
@@ -366,9 +375,9 @@
                 font-size: 0.95rem;
                 margin: 1rem 0 0.5rem;
             }
-            .back-button {
-                padding: 0.5rem 0.4rem;
-                font-size: 0.75rem;
+            .nav a {
+                padding: 4px 6px;
+                font-size: 0.7rem;
             }
             .input-group {
                 margin-bottom: 1rem;
@@ -389,13 +398,13 @@
             <div class="status-line" id="status">{{status}}</div>
             <div class="thought-line" id="thought">{{thought}}</div>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
-            <button class="back-button" onclick="location.href='/'">Chat</button>
-            <button class="back-button" onclick="location.href='/scans'">Scans</button>
-            <button class="back-button" onclick="location.href='/vulns'">Vulns</button>
-            <button class="back-button" onclick="location.href='/tasks'">Tasks</button>
-            <button class="back-button" onclick="location.href='/files'">Files</button>
-        </div>
+        <nav class="nav">
+            <a href="/">💬 Chat</a>
+            <a href="/scans">🎯 Scans</a>
+            <a href="/vulns">🔓 Vulns</a>
+            <a href="/tasks">📋 Tasks</a>
+            <a href="/files">📁 Files</a>
+        </nav>
     </header>
 
     <div class="settings-section">
