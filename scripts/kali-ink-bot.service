@@ -1,0 +1,46 @@
+[Unit]
+Description=Kali Ink Bot - AI Pentest Assistant
+Documentation=https://github.com/your-repo/kali-ink-bot
+After=network.target bluetooth.target
+Wants=network.target
+
+[Service]
+Type=forking
+User=root
+Group=root
+
+# Working directory
+WorkingDirectory=/home/pi/kali-ink-bot
+
+# Environment file (optional - for API keys)
+EnvironmentFile=-/home/pi/kali-ink-bot/.env
+
+# Bettercap credentials
+Environment=BETTERCAP_USER=inkling
+Environment=BETTERCAP_PASS=changeme
+
+# Start/Stop commands
+ExecStart=/home/pi/kali-ink-bot/scripts/kali-ink-bot.sh start
+ExecStop=/home/pi/kali-ink-bot/scripts/kali-ink-bot.sh stop
+ExecReload=/home/pi/kali-ink-bot/scripts/kali-ink-bot.sh restart
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+# Resource limits (Pi Zero 2W friendly)
+MemoryMax=400M
+CPUQuota=80%
+
+# Security hardening
+ProtectSystem=false
+ProtectHome=false
+NoNewPrivileges=false
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=kali-ink-bot
+
+[Install]
+WantedBy=multi-user.target

@@ -1185,6 +1185,11 @@ class Brain:
         """List of configured provider names."""
         return [p.name for p in self.providers]
 
+    @property
+    def messages(self) -> List[Dict[str, str]]:
+        """Get conversation history as list of dicts."""
+        return [{"role": m.role, "content": m.content} for m in self._messages]
+
     def get_stats(self) -> Dict[str, Any]:
         """Get usage statistics."""
         return {
