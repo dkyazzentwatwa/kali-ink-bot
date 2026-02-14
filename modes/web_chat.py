@@ -1290,6 +1290,9 @@ class WebChatMode:
         @self._app.route("/api/terminal/ws")
         def terminal_websocket():
             """WebSocket endpoint for live terminal."""
+            import logging
+            logger = logging.getLogger(__name__)
+
             if not WEBSOCKET_AVAILABLE:
                 response.status = 503
                 return "WebSocket support not available"
@@ -1307,70 +1310,113 @@ class WebChatMode:
                 return "WebSocket connection required"
 
             # Start PTY process
+            pty = None
             try:
                 import ptyprocess
+                # Build environment
+                env = os.environ.copy()
+                env.update({
+                    "TERM": "xterm-256color",
+                    "LANG": "en_US.UTF-8",
+                    "LC_ALL": "en_US.UTF-8",
+                })
                 pty = ptyprocess.PtyProcess.spawn(
                     ["/bin/bash", "-l"],
                     dimensions=(24, 80),
-                    env={
-                        "TERM": "xterm-256color",
-                        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-                        "HOME": os.environ.get("HOME", "/root"),
-                        "USER": os.environ.get("USER", "root"),
-                        "LANG": "en_US.UTF-8",
-                    }
+                    env=env,
                 )
+                logger.info(f"PTY spawned with PID {pty.pid}")
             except Exception as e:
+                logger.error(f"PTY spawn failed: {e}")
+                try:
+                    wsock.send(f"\r\n\x1b[31mTerminal error: {e}\x1b[0m\r\n")
+                except:
+                    pass
                 wsock.close()
-                return
+                return ""
+
+            stop_flag = threading.Event()
 
             # Reader thread: PTY -> WebSocket
             def pty_reader():
                 try:
-                    while pty.isalive():
+                    while not stop_flag.is_set() and pty.isalive():
                         try:
-                            if pty.fd in select.select([pty.fd], [], [], 0.1)[0]:
-                                data = pty.read(4096)
+                            # Use select with timeout
+                            readable, _, _ = select.select([pty.fd], [], [], 0.1)
+                            if readable:
+                                data = os.read(pty.fd, 4096)
                                 if data:
-                                    wsock.send(data)
-                        except (EOFError, OSError):
+                                    # Decode bytes to string for WebSocket
+                                    try:
+                                        text = data.decode("utf-8", errors="replace")
+                                        wsock.send(text)
+                                    except WebSocketError:
+                                        break
+                        except (EOFError, OSError) as e:
+                            logger.debug(f"PTY read error: {e}")
                             break
-                except WebSocketError:
-                    pass
+                except Exception as e:
+                    logger.error(f"Reader thread error: {e}")
                 finally:
-                    if pty.isalive():
-                        pty.terminate(force=True)
+                    stop_flag.set()
 
             reader_thread = threading.Thread(target=pty_reader, daemon=True)
             reader_thread.start()
 
             # Main loop: WebSocket -> PTY
             try:
-                while pty.isalive():
+                while not stop_flag.is_set() and pty.isalive():
                     try:
                         data = wsock.receive()
                         if data is None:
+                            logger.debug("WebSocket received None, closing")
                             break
-                        # Handle resize messages
-                        if isinstance(data, str) and data.startswith("\x1b[8;"):
-                            # Parse resize: ESC[8;rows;colst
+
+                        # Try to parse as JSON message
+                        if isinstance(data, str):
                             try:
-                                parts = data[4:-1].split(";")
-                                if len(parts) == 2:
-                                    rows, cols = int(parts[0]), int(parts[1])
+                                msg = json.loads(data)
+                                msg_type = msg.get("type")
+
+                                if msg_type == "resize":
+                                    rows = msg.get("rows", 24)
+                                    cols = msg.get("cols", 80)
                                     pty.setwinsize(rows, cols)
-                            except (ValueError, IndexError):
+                                    logger.debug(f"Resized to {rows}x{cols}")
+                                    continue
+
+                                elif msg_type == "input":
+                                    input_data = msg.get("data", "")
+                                    if input_data:
+                                        pty.write(input_data.encode("utf-8"))
+                                    continue
+
+                            except json.JSONDecodeError:
+                                # Not JSON, treat as raw input
                                 pass
-                        else:
-                            if isinstance(data, str):
-                                data = data.encode("utf-8")
+
+                            # Raw string input (fallback)
+                            pty.write(data.encode("utf-8"))
+
+                        elif isinstance(data, bytes):
                             pty.write(data)
-                    except WebSocketError:
+
+                    except WebSocketError as e:
+                        logger.debug(f"WebSocket error: {e}")
+                        break
+                    except Exception as e:
+                        logger.error(f"Main loop error: {e}")
                         break
             finally:
-                if pty.isalive():
-                    pty.terminate(force=True)
-                reader_thread.join(timeout=1)
+                stop_flag.set()
+                if pty and pty.isalive():
+                    try:
+                        pty.terminate(force=True)
+                    except:
+                        pass
+                reader_thread.join(timeout=2)
+                logger.info("Terminal session ended")
 
             return ""
 
