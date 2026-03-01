@@ -488,7 +488,11 @@ class WebChatMode:
             if auth_check:
                 return auth_check
             command_groups = self._build_command_palette()
-            dashboard = self._build_dashboard_snapshot()
+            try:
+                dashboard = self._build_dashboard_snapshot()
+            except Exception as e:
+                print(f"[Web] Dashboard snapshot error: {e}")
+                dashboard = {}
             return template(
                 HTML_TEMPLATE,
                 name=self.personality.name,
@@ -609,7 +613,11 @@ class WebChatMode:
             if auth_err:
                 return auth_err
             response.content_type = "application/json"
-            return json.dumps(self._build_dashboard_snapshot())
+            try:
+                return json.dumps(self._build_dashboard_snapshot())
+            except Exception as e:
+                print(f"[Web] Dashboard API error: {e}")
+                return json.dumps({})
 
         @self._app.route("/api/settings", method="GET")
         def get_settings():
